@@ -1,41 +1,94 @@
 # Backend — Solar Recovery Intelligence
 
-## Purpose
+## Status
 
-This branch is responsible for the application API and orchestration layer. It connects the frontend to the available analysis components and returns structured, traceable results.
+The first backend API implementation is on this `backend` branch. It validates frontend requests, forwards them to the existing local LLM API, normalizes the response contract, and returns useful errors when the LLM is unavailable.
 
-## Intended responsibilities
+**The teammate's ML implementation is not called or modified.** The backend accepts optional `ml_results`; it is currently safe to use sample data while ML development continues.
 
-1. Define and validate the API requests received from the frontend.
-2. Validate and normalize incoming data only as required by the agreed application contract.
-3. Coordinate calls to the separate ML component and local LLM component when they are available.
-4. Keep deterministic calculations and numeric business logic in tested code or the appropriate ML/calculation layer.
-5. Pass structured evidence and results to the LLM for explanation rather than asking the LLM to invent measurements or perform authoritative calculations.
-6. Return predictable JSON responses, including missing-data notes, errors, and uncertainty where available.
-7. Apply timeouts and useful error handling when a component is unavailable.
-8. Provide the frontend with a stable, documented integration contract.
+## Architecture
 
-The exact endpoints, schema, and which layer owns each calculation must be agreed with the team before implementation. This README describes intended responsibilities, not completed functionality.
+```text
+Frontend (Vite/React: usually http://localhost:5173)
+        |
+        | POST /api/v1/analyze
+        v
+Application backend (http://127.0.0.1:8001)
+        |
+        | POST /api/v1/analyze
+        v
+Local LLM API (http://127.0.0.1:8000)
+```
 
-## LLM integration
+The backend must run on a machine that can reach the local LLM API. For this hackathon setup, run both services on the same development laptop. A deployed backend's `127.0.0.1` would refer to the deployment server, not your laptop.
 
-The local model is intended to run through Ollama, currently installed on the developer's Windows laptop. A request to `http://localhost:11434` reaches the machine making that request: if the backend is deployed on a different server, its `localhost` will not reach the developer's laptop. The team must choose and test an architecture that preserves the hackathon's local-inference requirement.
+## Run the backend
 
-The backend should send the LLM only the structured facts, calculations, and hypotheses it is allowed to explain. It should validate or constrain the response format and handle model timeouts or malformed output.
+Use a separate working directory/clone for this `backend` branch if you also need the `AI-model` branch checked out locally at the same time.
 
-## Integration contract
+PowerShell, from the repository root on the `backend` branch:
 
-Before implementation, document:
-- Request fields, units, timestamps, and required/optional inputs.
-- Structured ML result fields and their provenance.
-- LLM input context and expected response format.
-- Error responses and insufficient-evidence behaviour.
-- Model availability, timeouts, and local/deployed network assumptions.
+```powershell
+py -m venv .venv-backend
+.\.venv-backend\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+Copy-Item .env.example .env
+python -m uvicorn main:app --host 127.0.0.1 --port 8001 --reload
+```
 
-## Out of scope
+Start the local LLM API separately from the `AI-model` working copy on port 8000. Follow `README_LOCAL_API.md` on that branch. The first inference can take longer while the model loads.
 
-This branch does not own the frontend UI, the teammate's ML-model training/implementation, or the LLM fine-tuning pipeline itself.
+Open [http://127.0.0.1:8001/docs](http://127.0.0.1:8001/docs).
 
-## Current status
+## Endpoints
 
-This branch is being reset for a fresh implementation. No backend endpoints or integration code are claimed as complete yet.
+- `GET /health`: backend liveness; does not require the LLM to be online.
+- `GET /ready`: checks the upstream LLM API and whether its model is loaded.
+- `POST /api/v1/analyze`: validates the request, forwards it to the local LLM, validates the response, and returns a stable JSON envelope.
+
+## Sample request
+
+```json
+{
+  "plant_id": "SOLAR-TEST-01",
+  "timestamp": "2026-10-30T12:00:00+05:30",
+  "plant_context": {
+    "installed_capacity_kw": 500
+  },
+  "observations": {
+    "panel_temperature_c": 58,
+    "power_output_kw": 65,
+    "expected_power_output_kw": 100
+  },
+  "ml_results": {},
+  "retrieved_context": []
+}
+```
+
+These are sample values only. The backend does not calculate expected output or diagnose faults; it forwards observations and any supplied ML outputs to the explanation API.
+
+## Error handling
+
+- `422`: request schema validation failed.
+- `502`: upstream returned an invalid response or unexpected error.
+- `503`: local LLM API is unavailable or not ready.
+- `504`: local LLM request timed out.
+
+If the browser blocks a request, ensure the frontend's exact origin is listed in `CORS_ORIGINS` in `.env`. Origins include the protocol and port, for example `http://localhost:5173`.
+
+## Tests
+
+```powershell
+python -m pip install pytest httpx
+python -m pytest -q
+```
+
+The tests mock the LLM call and validate the backend contract; they do not load the GPU model or test ML behavior.
+
+## Environment
+
+- `LLM_API_URL`: default `http://127.0.0.1:8000`
+- `LLM_TIMEOUT_SECONDS`: default `180`
+- `CORS_ORIGINS`: comma-separated allowed frontend origins
+
+Never commit `.env`, model weights, virtual environments, private plant data, or secrets.
