@@ -1,42 +1,54 @@
-# Frontend — Solar Recovery Intelligence
+# SolarSleuth — Solar Recovery Intelligence Frontend
 
-## Purpose
+React + Vite frontend for the Globathon 2026 Solar Recovery Intelligence project. The visual design is based on the existing [SolarSleuth frontend in DJ-007-WEB/globathon](https://github.com/DJ-007-WEB/globathon), adapted to call the local application backend and render its LLM-generated analysis.
 
-This branch is responsible for the operator-facing user interface for the Globathon 2026 Solar Recovery Intelligence project. It should make solar-plant analysis understandable and actionable without making unsupported technical claims.
+## Run locally
 
-## Intended user flow
+Prerequisites: Node.js and npm.
 
-The interface is expected to support a workflow such as:
+```powershell
+npm install
+npm run dev
+```
 
-1. Let the user provide or select the plant data and analysis context supported by the backend.
-2. Show the analysis status and handle missing, invalid, or incomplete input clearly.
-3. Present returned performance findings and relevant evidence in a readable form.
-4. Display possible explanations as hypotheses when they are not confirmed facts.
-5. Present recovery-oriented suggestions and their assumptions when the backend supplies them.
-6. Make errors and insufficient-evidence outcomes clear to the user.
+Open the URL printed by Vite (normally `http://127.0.0.1:5173`).
 
-The exact screens, upload format, visualizations, and final workflow should be agreed with the team before implementation; this README does not assert that these features are already built.
+## Start the services
 
-## Integration boundary
+Keep these services running in separate terminals:
 
-- The frontend calls the backend API; it should not call Ollama directly or implement ML calculations itself.
-- It renders structured backend results and should preserve labels for observations, estimates, hypotheses, and uncertainty.
-- It should not fabricate generation figures, diagnoses, savings, or confidence values.
-- API routes and request/response schemas must be agreed with the backend branch before wiring the interface.
-- Loading, validation, empty, success, and error states should be considered.
+1. Local LLM API on `http://127.0.0.1:8000`.
+2. Application backend on `http://127.0.0.1:8001`.
+3. Frontend via `npm run dev` on port `5173`.
 
-## Responsibilities
+The frontend calls only the application backend. It does not call the model directly and does not perform ML calculations in the browser.
 
-- Build a clear, responsive, accessible interface for plant analysis.
-- Present evidence and recommendations in a way that is easy to understand.
-- Validate user input at the interface level while relying on the backend for authoritative validation.
-- Keep API configuration separate from UI components and avoid committing secrets.
-- Test the interface with both valid responses and insufficient-data/error responses.
+## Demo access
 
-## Out of scope
+- Email: `demo@solarsleuth.app`
+- Password: `Demo@1234`
 
-This branch does not own model training, local LLM inference, backend orchestration, or the teammate's ML-model implementation.
+Authentication is a **local demo gate only**; it is not production authentication and does not protect sensitive data.
 
-## Current status
+## Backend integration
 
-This branch is being reset for a fresh implementation. No frontend implementation is claimed as complete yet.
+- `GET /ready` — readiness status and model-loaded indicator.
+- `POST /api/v1/analyze` — sends plant context and observations to the backend, which forwards them to the local LLM.
+
+The API base defaults to `http://127.0.0.1:8001`. To use another backend, either open the frontend with `?api=http://127.0.0.1:8001` or change the Backend API URL in the workspace and press **Connect**. The value is remembered in local browser storage.
+
+The analysis form sends the entered plant identifier, capacity context, current power, expected power, panel temperature and irradiance. The UI renders the returned summary, observations, possible causes, supporting evidence, recommended checks, limitations and confidence. Missing sections are explicitly shown as missing rather than invented.
+
+## Build
+
+```powershell
+npm run build
+npm run preview
+```
+
+## Important limitations
+
+- The LLM output is an explanation, not proof of a physical fault. Verify hypotheses against telemetry and qualified operator checks.
+- The response renderer preserves the model's returned content but does not independently validate whether its claims are factually correct.
+- The demo sign-in is browser-local only.
+- The frontend branch is independent from the `backend`, `AI-model`, and `ML_models` branches. No model-training or ML implementation files are changed here.
