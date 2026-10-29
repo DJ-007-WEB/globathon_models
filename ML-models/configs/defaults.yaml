@@ -87,6 +87,36 @@ baseline:
   allow_ghi_proxy: false
 
 # ---------------------------------------------------------------------------
+# Anomaly detection
+# ---------------------------------------------------------------------------
+anomaly:
+  # Peer comparison is only attempted when at least this many comparable
+  # devices report at the same timestamp.
+  peer_min_devices: 3
+  peer_mad_threshold: 6.0
+  peer_mad_floor: 0.01
+  # Devices are comparable only when rated AC capacities are within this ratio.
+  capacity_tolerance_ratio: 0.20
+  # Consecutive assessable intervals needed before a persistent alert.
+  persistence_n: 2
+  min_irradiance_w_m2: 50.0
+  night_sun_elevation_deg: -0.833
+  min_expected_power_fraction: 0.01
+  min_expected_power_kw: 0.5
+  residual_shortfall_threshold: 0.20
+  cusum_slack: 0.05
+  cusum_threshold: 0.50
+
+# ---------------------------------------------------------------------------
+# Attribution rules
+# ---------------------------------------------------------------------------
+attribution:
+  low_output_ratio: 0.80
+  adequate_irradiance_w_m2: 50.0
+  night_sun_elevation_deg: -0.833
+  min_expected_power_kw: 0.5
+
+# ---------------------------------------------------------------------------
 # Plausibility ranges (used as screening checks, not proof of a fault)
 # ---------------------------------------------------------------------------
 plausibility:
