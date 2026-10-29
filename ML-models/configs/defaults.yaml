@@ -74,6 +74,19 @@ mapping:
     generation: [energy_interval, energy_cumulative]
 
 # ---------------------------------------------------------------------------
+# Physics baseline
+# ---------------------------------------------------------------------------
+baseline:
+  system_losses_fraction: 0.12
+  inverter_efficiency: 0.97
+  dc_ac_ratio: 1.2
+  temperature_coefficient_per_c: -0.0035
+  module_temperature_k_c_per_w_m2: 0.03
+  irradiance_reference_w_m2: 1000.0
+  # If true, GHI may be used only when POA is absent, with an explicit warning.
+  allow_ghi_proxy: false
+
+# ---------------------------------------------------------------------------
 # Plausibility ranges (used as screening checks, not proof of a fault)
 # ---------------------------------------------------------------------------
 plausibility:
