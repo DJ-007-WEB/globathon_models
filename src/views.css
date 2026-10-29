@@ -1,0 +1,145 @@
+/* ──────────────────────────────────────────────────────────────
+   Views formatting pass — Overview dashboard + Investor report.
+   Loaded after style.css / demo.css so these rules win ties.
+   All selectors are scoped to the overview page, the report or
+   the two SVG charts, so the rest of the app keeps its styles.
+   ────────────────────────────────────────────────────────────── */
+
+/* Chart palette (theme aware, used by the SVG charts) */
+:root{--chart-forecast:#cbd5e1;--chart-neg:#b4452b;--chart-pos:#0f766e}
+:root[data-theme="dark"]{--chart-forecast:#3d5a4c;--chart-neg:#d4614f;--chart-pos:#2ea88c}
+
+/* ---------- SVG chart primitives ---------- */
+.mchart{display:block}
+.mchart-grid{stroke:var(--line)}
+.mchart-zero{stroke:var(--line-strong)}
+.mchart-tick{fill:var(--muted);font-size:11px}
+.mchart-forecast{fill:var(--chart-forecast)}
+.mchart-neg{fill:var(--chart-neg)}
+.mchart-pos{fill:var(--chart-pos)}
+.mchart-gap{font-size:11px;font-weight:700}
+.wf-grid{stroke:var(--line)}
+.wf-zero{stroke:var(--ink-2)}
+.wf-tick{fill:var(--muted)}
+.wf-whisker{stroke:var(--ink-2)}
+.wf-connector{stroke:var(--line-strong)}
+.wf-total{fill:var(--blue)}
+.wf-neg{fill:var(--chart-neg)}
+.wf-pos{fill:var(--chart-pos)}
+.wf-interaction{fill:#94a3b8}
+.wf-value{fill:var(--ink)}
+.wf-label{fill:var(--ink)}
+.wf-una-text{fill:var(--amber)}
+
+/* ---------- Overview page: clear sections, larger type ---------- */
+.overview-page{font-size:14px}
+.overview-page .overview-welcome{margin-bottom:18px}
+.overview-page .overview-welcome h2{font-size:22px}
+.overview-page .overview-welcome p{font-size:13px}
+.ov-badge{flex:none;font-size:10.5px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);background:var(--surface-2);border:1px solid var(--line);border-radius:999px;padding:8px 14px;white-space:nowrap}
+.overview-page .kpi{padding:19px}
+.overview-page .kpi small{font-size:12px}
+.overview-page .kpi b{font-size:clamp(22px,2.4vw,29px)}
+.overview-page .kpi em{font-size:11.5px;line-height:1.55}
+.ov-section{margin-bottom:28px}
+.ov-head{display:flex;gap:13px;align-items:flex-start;margin:0 0 13px}
+.ov-step{flex:none;width:30px;height:30px;border-radius:50%;background:var(--green);color:#fff;display:grid;place-items:center;font:800 13px var(--display);margin-top:3px}
+.ov-head h3{font:800 20px/1.25 var(--display);letter-spacing:-.03em;margin:0 0 5px}
+.ov-head p{margin:0;color:var(--muted);font-size:13px;line-height:1.6;max-width:900px}
+
+/* Section 1 — performance chart */
+.ov-chart-card{padding:22px 22px 16px}
+.ov-legend{display:flex;gap:18px;flex-wrap:wrap;font-size:12px;font-weight:600;color:var(--muted);margin-bottom:10px}
+.ov-legend i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+.ov-key-forecast{background:var(--chart-forecast)}
+.ov-key-shortfall{background:var(--chart-neg)}
+.ov-key-ontrack{background:var(--chart-pos)}
+.ov-read{margin-top:14px;border-top:1px solid var(--line);padding-top:12px;display:grid;gap:8px}
+.ov-read p{margin:0;font-size:13px;line-height:1.7;color:var(--ink-2)}
+.ov-read b{color:var(--ink)}
+
+/* Section 2 — causes + unexplained */
+.ov-cols{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(300px,.85fr);gap:16px;align-items:start}
+.ov-cols .card{margin-bottom:0}
+.ov-side{display:grid;gap:16px}
+.ov-hint{font-size:12.5px;color:var(--muted);line-height:1.6;margin:2px 0 10px}
+.ov-cause{padding:11px 0;border-bottom:1px solid var(--line)}
+.ov-cause:last-of-type{border-bottom:0}
+.ov-cause-top{display:flex;justify-content:space-between;gap:12px;align-items:baseline;font-size:13.5px}
+.ov-cause-name{color:var(--ink-2);font-weight:600;overflow-wrap:anywhere}
+.ov-cause-top b{font-variant-numeric:tabular-nums}
+.ov-cause .cause-track{height:8px;margin:7px 0 6px}
+.ov-cause-fill{height:100%;border-radius:99px;background:var(--chart-neg)}
+.ov-cause-meta{font-size:12px;color:var(--muted)}
+.ov-cta-row{display:flex;gap:9px;flex-wrap:wrap;margin-top:16px}
+.ov-cta-row .btn{font-size:13px;padding:10px 15px}
+.btn-ghost{background:var(--surface-2);color:var(--ink);border:1px solid var(--line)}
+.btn-ghost:hover{background:var(--surface-3)}
+.ov-stat{font:800 clamp(24px,2.4vw,30px)/1.2 var(--display);letter-spacing:-.04em;color:var(--amber)}
+.ov-stat-sub{font-size:12.5px;color:var(--muted);margin-top:4px}
+.ov-facts{margin:12px 0 0;padding-left:18px;display:grid;gap:7px}
+.ov-facts li{font-size:13px;line-height:1.6;color:var(--ink-2)}
+.ov-msg{font-size:13px;line-height:1.7;color:var(--ink-2);margin:11px 0 0}
+.ov-unexplained.ov-within .ov-stat{color:var(--green)}
+.ov-next-title{display:block;font-size:14px;margin:2px 0 0}
+
+/* Section 3 — plain-language definitions */
+.ov-terms{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.ov-term{background:var(--surface);border:1px solid var(--line);border-radius:15px;padding:18px}
+.ov-term-label{display:block;font-size:12px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
+.ov-term b{display:block;font:800 clamp(21px,2vw,26px)/1.2 var(--display);letter-spacing:-.04em;margin-bottom:7px}
+.ov-term p{margin:0;font-size:13px;line-height:1.7;color:var(--ink-2)}
+
+/* Section 4 — status */
+.ov-status .item{font-size:13px;padding:10px 0}
+
+/* ---------- Investor report: readable text + chart figures ---------- */
+.report h2{font-size:18px}
+.report p{font-size:13px;line-height:1.75}
+.report .note{font-size:12px;line-height:1.7}
+.report table{font-size:12px}
+.report th{font-size:10.5px}
+.report svg{display:block;max-width:100%;height:auto}
+.rpt-figure{margin:16px 0 24px;padding:18px 18px 10px;border:1px solid var(--line);border-radius:14px;background:var(--surface-2)}
+.rpt-figure svg{max-width:100%;height:auto}
+.rpt-caption{font-size:12.5px;line-height:1.7;color:var(--muted);margin:12px 2px 6px}
+.rpt-caption b{color:var(--ink-2)}
+.rpt-una-row{background:var(--amber-soft)}
+.rpt-una-row td{color:var(--ink-2)}
+
+/* Overview cards: sub-titles */
+.ov-head-title{font:800 15px/1.35 var(--display);letter-spacing:-.02em;margin:0 0 6px}
+.ov-head-sub{color:var(--muted);font-size:12px;line-height:1.6;margin:0 0 10px}
+
+/* Report variance figures */
+.rpt-kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:10px 0 20px}
+.rpt-kpi{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:15px}
+.rpt-kpi small{display:block;color:var(--muted);font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;margin-bottom:7px}
+.rpt-kpi b{font:800 clamp(19px,2vw,25px)/1.2 var(--display);letter-spacing:-.03em}
+.rpt-kpi em{font-size:11px;font-style:normal;color:var(--muted);line-height:1.5;margin-top:3px;display:block}
+
+/* ---------- Responsive ---------- */
+@media(max-width:1000px){
+  .ov-cols{grid-template-columns:1fr}
+  .rpt-kpis{grid-template-columns:1fr}
+}
+@media(max-width:850px){
+  /* Mobile: the sidebar becomes a top tab strip — make sure it scrolls
+     instead of stretching the whole grid past the viewport. */
+  .app-shell{grid-template-columns:minmax(0,1fr)}
+  .sidebar{min-width:0}
+}
+@media(max-width:700px){
+  .ov-terms{grid-template-columns:1fr}
+  .ov-head h3{font-size:18px}
+  .overview-page .overview-welcome h2{font-size:19px}
+}
+
+/* ---------- Print: keep charts intact on the PDF ---------- */
+@media print{
+  .rpt-figure{border:1px solid #d9d9d9;background:#fff;break-inside:avoid;page-break-inside:avoid}
+  .rpt-figure svg{width:100%!important;height:auto!important}
+  .report h2{font-size:15px}
+  .report p{font-size:11.5px}
+  .rpt-caption{font-size:10.5px}
+}
