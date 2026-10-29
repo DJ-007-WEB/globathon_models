@@ -93,6 +93,7 @@ export default function App() {
   const login = async (e: FormEvent) => {
     e.preventDefault(); setAuthError("");
     const cleanEmail=email.trim().toLowerCase();
+    let signedInName = "Demo Analyst";
     if(authMode==="signup"){
       if(fullName.trim().length<2){setAuthError("Enter your name (at least 2 characters).");return;}
       if(!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]{2,}$/.test(cleanEmail)){setAuthError("Enter a valid email address.");return;}
@@ -105,22 +106,22 @@ export default function App() {
         const salt=Math.random().toString(36).slice(2)+Date.now().toString(36);
         users[cleanEmail]={name:fullName.trim(),salt,hash:await hashPassword(password,salt)};
         localStorage.setItem("solarsleuth_users",JSON.stringify(users));
-        setUserName(fullName.trim());
+        setUserName(fullName.trim()); signedInName=fullName.trim();
       }catch{setAuthError("This browser could not save the account. Try the demo login.");return;}
     } else {
       if(!cleanEmail||!password){setAuthError("Enter your email and password.");return;}
-      if(cleanEmail==="demo@solarsleuth.app"&&password==="Demo@1234"){setUserName("Demo Analyst");}
+      if(cleanEmail==="demo@solarsleuth.app"&&password==="Demo@1234"){setUserName("Demo Analyst");signedInName="Demo Analyst";}
       else{
         try{
           const users=JSON.parse(localStorage.getItem("solarsleuth_users")||"{}");
           const u=users[cleanEmail];
           if(!u||await hashPassword(password,u.salt)!==u.hash){setAuthError("Incorrect email or password.");return;}
-          setUserName(u.name);
+          setUserName(u.name); signedInName=u.name;
         }catch{setAuthError("Unable to read this browser's demo account.");return;}
       }
     }
     setAuthed(true);
-    try{localStorage.setItem("solarsleuth_demo_session",JSON.stringify({name:authMode==="signup"?fullName.trim():(cleanEmail==="demo@solarsleuth.app"?"Demo Analyst":userName),email:cleanEmail,at:Date.now()}))}catch{}
+    try{localStorage.setItem("solarsleuth_demo_session",JSON.stringify({name:signedInName,email:cleanEmail,at:Date.now()}))}catch{}
     setShowAuth(false);setPage("overview");
   };
   const logout = () => { setAuthed(false);try{localStorage.removeItem("solarsleuth_demo_session")}catch{};setPage("overview"); };
