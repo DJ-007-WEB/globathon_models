@@ -1,0 +1,13 @@
+{
+  "columns": {
+    "timestamp": "Timestamp",
+    "actual_power": "Measured AC Power",
+    "irradiance": "POA Irradiance",
+    "inverter_status": "Inverter State"
+  },
+  "units": {
+    "actual_power": "kW",
+    "irradiance": "W/m2"
+  },
+  "notes": "Illustrative only. Replace every source column with the exact header from the incoming file."
+}
