@@ -13,6 +13,7 @@ type ApiResult = { request_id?: string | null; plant_id?: string; model?: string
 type Turn = { id: string; question: string; result?: ApiResult; error?: string; loading?: boolean };
 
 const DEFAULT_API = "http://127.0.0.1:8001";
+async function hashPassword(password: string, salt: string) { const bytes=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(salt+":"+password)); return [...new Uint8Array(bytes)].map(b=>b.toString(16).padStart(2,"0")).join(""); }
 const getApiBase = () => {
   try {
     const params = new URLSearchParams(window.location.search);
@@ -61,6 +62,9 @@ export default function App() {
   const [userName, setUserName] = useState("Demo Analyst");
   const [email, setEmail] = useState("demo@solarsleuth.app");
   const [password, setPassword] = useState("Demo@1234");
+  const [authMode, setAuthMode] = useState<"signin"|"signup">("signin");
+  const [fullName, setFullName] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [authError, setAuthError] = useState("");
   const [ready, setReady] = useState<"checking"|"ready"|"offline">("checking");
   const [plantId, setPlantId] = useState("solar-plant-test-01");
@@ -86,7 +90,39 @@ export default function App() {
   useEffect(() => { void checkReady(); const id=window.setInterval(()=>void checkReady(),15000); return ()=>window.clearInterval(id); },[checkReady]);
 
   const startDemo = () => { if(authed){setShowAuth(false);setPage("overview")}else setShowAuth(true); };
-  const login = (e: FormEvent) => { e.preventDefault(); setAuthError(""); if(!email.trim()||!password){setAuthError("Enter the demo email and password.");return;} if(email.trim().toLowerCase()!=="demo@solarsleuth.app"||password!=="Demo@1234"){setAuthError("For this prototype, use demo@solarsleuth.app / Demo@1234.");return;} setAuthed(true);setUserName("Demo Analyst");try{localStorage.setItem("solarsleuth_demo_session",JSON.stringify({name:"Demo Analyst",email:email.trim(),at:Date.now()}))}catch{} setShowAuth(false);setPage("overview"); };
+  const login = async (e: FormEvent) => {
+    e.preventDefault(); setAuthError("");
+    const cleanEmail=email.trim().toLowerCase();
+    if(authMode==="signup"){
+      if(fullName.trim().length<2){setAuthError("Enter your name (at least 2 characters).");return;}
+      if(!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]{2,}$/.test(cleanEmail)){setAuthError("Enter a valid email address.");return;}
+      if(cleanEmail==="demo@solarsleuth.app"){setAuthError("That email is reserved for the demo account.");return;}
+      if(password.length<8||!/[A-Za-z]/.test(password)||!/\\d/.test(password)){setAuthError("Use at least 8 characters with a letter and a number.");return;}
+      if(password!==confirmPassword){setAuthError("The passwords do not match.");return;}
+      try{
+        const users=JSON.parse(localStorage.getItem("solarsleuth_users")||"{}");
+        if(users[cleanEmail]){setAuthError("An account with this email already exists. Sign in instead.");return;}
+        const salt=Math.random().toString(36).slice(2)+Date.now().toString(36);
+        users[cleanEmail]={name:fullName.trim(),salt,hash:await hashPassword(password,salt)};
+        localStorage.setItem("solarsleuth_users",JSON.stringify(users));
+        setUserName(fullName.trim());
+      }catch{setAuthError("This browser could not save the account. Try the demo login.");return;}
+    } else {
+      if(!cleanEmail||!password){setAuthError("Enter your email and password.");return;}
+      if(cleanEmail==="demo@solarsleuth.app"&&password==="Demo@1234"){setUserName("Demo Analyst");}
+      else{
+        try{
+          const users=JSON.parse(localStorage.getItem("solarsleuth_users")||"{}");
+          const u=users[cleanEmail];
+          if(!u||await hashPassword(password,u.salt)!==u.hash){setAuthError("Incorrect email or password.");return;}
+          setUserName(u.name);
+        }catch{setAuthError("Unable to read this browser's demo account.");return;}
+      }
+    }
+    setAuthed(true);
+    try{localStorage.setItem("solarsleuth_demo_session",JSON.stringify({name:authMode==="signup"?fullName.trim():(cleanEmail==="demo@solarsleuth.app"?"Demo Analyst":userName),email:cleanEmail,at:Date.now()}))}catch{}
+    setShowAuth(false);setPage("overview");
+  };
   const logout = () => { setAuthed(false);try{localStorage.removeItem("solarsleuth_demo_session")}catch{};setPage("overview"); };
   const requestBody = useMemo(() => ({
     plant_id: plantId.trim() || "solar-plant-test-01",
@@ -122,7 +158,7 @@ export default function App() {
   const nav=[{id:"overview" as const,label:"Overview",icon:"◫"},{id:"data" as const,label:"Data upload",icon:"⇧"},{id:"analysis" as const,label:"Variance analysis",icon:"⌁"},{id:"class" as const,label:"Cause classification",icon:"◉"},{id:"valid" as const,label:"Validation lab",icon:"✓"},{id:"report" as const,label:"Investor report",icon:"▤"},{id:"why" as const,label:"Methodology",icon:"◇"},{id:"assistant" as const,label:"AI assistant",icon:"✳"}];
 
   return <>
-    {showAuth&&<div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="authTitle" onClick={e=>{if(e.target===e.currentTarget)setShowAuth(false)}}><div className="auth-card"><button className="modal-close" aria-label="Close sign-in" onClick={()=>setShowAuth(false)}>×</button><div className="auth-brand"><BrandMark/><b>SolarSleuth</b></div><div className="eyebrow">DEMO WORKSPACE ACCESS</div><h2 id="authTitle">Your solar intelligence workspace.</h2><div className="demo-cred"><div><b>Demo credentials</b><span>demo@solarsleuth.app · Demo@1234</span></div><button className="small-action" type="button" onClick={()=>{setEmail("demo@solarsleuth.app");setPassword("Demo@1234")}}>Use demo login</button></div><form onSubmit={login}><label htmlFor="authEmail">Email address</label><input id="authEmail" type="email" autoComplete="username" value={email} onChange={e=>setEmail(e.target.value)}/><label htmlFor="authPassword">Password</label><input id="authPassword" type="password" autoComplete="current-password" value={password} onChange={e=>setPassword(e.target.value)}/>{authError&&<div className="auth-error" role="alert">{authError}</div>}<button className="btn btn-primary btn-lg" type="submit">Enter demo workspace ↗</button></form><p className="inline-note">Demo-only sign-in stored in this browser. It is not production authentication.</p></div></div>}
+    {showAuth&&<div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="authTitle" onClick={e=>{if(e.target===e.currentTarget)setShowAuth(false)}}><div className="auth-card"><button className="modal-close" aria-label="Close sign-in" onClick={()=>setShowAuth(false)}>×</button><div className="auth-brand"><BrandMark/><b>SolarSleuth</b></div><div className="eyebrow">DEMO WORKSPACE ACCESS</div><h2 id="authTitle">Your solar intelligence workspace.</h2>{authMode==="signin"&&<div className="demo-cred"><div><b>Demo credentials</b><span>demo@solarsleuth.app · Demo@1234</span></div><button className="small-action" type="button" onClick={()=>{setEmail("demo@solarsleuth.app");setPassword("Demo@1234")}}>Use demo login</button></div>}<div className="auth-tabs"><button type="button" className={authMode==="signin"?"on":""} onClick={()=>{setAuthMode("signin");setAuthError("")}}>Sign in</button><button type="button" className={authMode==="signup"?"on":""} onClick={()=>{setAuthMode("signup");setAuthError("")}}>Create account</button></div><form onSubmit={login}>{authMode==="signup"&&<><label htmlFor="authName">Your name</label><input id="authName" autoComplete="name" value={fullName} onChange={e=>setFullName(e.target.value)} placeholder="e.g. Alex Morgan"/></>}<label htmlFor="authEmail">Email address</label><input id="authEmail" type="email" autoComplete="username" value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@company.com"/><label htmlFor="authPassword">Password</label><input id="authPassword" type="password" autoComplete={authMode==="signup"?"new-password":"current-password"} value={password} onChange={e=>setPassword(e.target.value)} placeholder={authMode==="signup"?"8+ characters, a letter and a number":"Enter your password"}/>{authMode==="signup"&&<><label htmlFor="authConfirm">Confirm password</label><input id="authConfirm" type="password" autoComplete="new-password" value={confirmPassword} onChange={e=>setConfirmPassword(e.target.value)} placeholder="Repeat password"/></>}{authError&&<div className="auth-error" role="alert">{authError}</div>}<button className="btn btn-primary btn-lg btn-full" type="submit">{authMode==="signup"?"Create demo account ↗":"Enter demo workspace ↗"}</button></form><p className="inline-note">Browser-local demo authentication only. Do not use for sensitive data.</p></div></div>}
     {!authed ? <section id="landing" className="landing-shell">
       <header className="topbar landing-topbar"><a className="brand" href="#home"><BrandMark/><span className="brand-copy"><b>SolarSleuth</b><small>Performance intelligence</small></span></a><div className="topbar-right"><span className="environment-pill"><span className={"status-dot "+(ready==="ready"?"":"")}></span>{statusText}</span><button className="icon-btn theme-toggle" onClick={()=>setTheme(theme==="dark"?"light":"dark")} aria-label="Toggle theme"><span className="theme-symbol">{theme==="dark"?"☾":"☼"}</span></button><button className="signin-btn" onClick={()=>setShowAuth(true)}>Sign in</button></div></header>
       <div className="hero-grid"><div className="hero-copy"><div className="eyebrow"><span className="eyebrow-line"></span> SOLAR ASSET INTELLIGENCE · GLOBATHON 2026</div><h1>When output falls short,<br/>find the <span>reason behind it.</span></h1><p className="hero-lede">Turn solar plant readings into an evidence-aware explanation. Explore performance, review possible causes and keep uncertainty visible — with a local AI model running on your machine.</p><div className="hero-actions"><button className="btn btn-primary btn-lg" id="startdemo" onClick={startDemo}>Explore the live demo <span aria-hidden="true"> ↗ </span></button><a className="text-link" href="#how">See how it works <span> ↓ </span></a></div><div className="hero-proof"><div className="proof-avatars"><span>PV</span><span>AI</span><span>✓</span></div><div><b>Explainable by design</b><small>Local inference · Evidence-first explanations · Human verification</small></div></div></div><div className="hero-visual" aria-label="Illustrative solar performance visualization"><div className="visual-orbit orbit-one"></div><div className="visual-orbit orbit-two"></div><div className="sun-glow"></div><div className="solar-art"><div className="sun-disc"></div><div className="sun-ray ray-a"></div><div className="sun-ray ray-b"></div><div className="sun-ray ray-c"></div><div className="solar-hill hill-back"></div><div className="solar-hill hill-front"></div><div className="panel-grid">{Array.from({length:12},(_,i)=><span key={i}/>)}</div></div><div className="visual-caption">LOCAL AI · SOLAR PERFORMANCE INTELLIGENCE</div></div></div>
