@@ -1,5 +1,49 @@
 # SolarSleuth: ML Pipeline
 
+## Windows quick start
+
+This project is intended to run locally on Windows PowerShell or Command Prompt.
+
+```powershell
+cd D:\Storage\Downloads\globathon_models
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -U pip
+python -m pip install -r ML-models\requirements.txt
+python ML-models\scripts\generate_synthetic.py --seed 7 --n-scenarios 1 --out ML-models\artifacts\synthetic_smoke
+python ML-models\scripts\run_pipeline.py --inputs ML-models\artifacts\synthetic_smoke\scenario_000 --output ML-models\artifacts\pipeline_output.json
+```
+
+The pipeline can be run on a synthetic scenario or any scenario directory containing `operating_data.csv` and optionally `weather.csv`, `forecast.csv`, `devices.csv`, and `event_log.csv`.
+
+### Command usage
+
+```powershell
+python ML-models\scripts\run_pipeline.py --inputs <scenario_directory> --output <output_path.json>
+```
+
+If required data is missing, the pipeline reports `unavailable` rather than fabricating values.
+
+## Benchmark provenance and current results
+
+This repo currently includes the deterministic synthetic generator and project validation checks, plus the generated synthetic smoke batch under `ML-models/artifacts/synthetic_smoke`.
+
+Actual benchmark results in this branch are limited to the smoke validation and the project's automated tests. No model benchmark report was claimed as real-world accuracy beyond that validation. The provenance for synthetic runs is the generator in `ML-models/src/synthetic.py`, which is intentionally separate from any real-plant dataset and never used as model input for production predictions.
+
+## Data sources and licence notes
+
+The project keeps raw public and validation data local and does not commit them by default. The source inventory remains in `ML-models/data/README.md` and must be verified before public release or redistribution. Keep licences, file versions, and provenance metadata with the local dataset copies.
+
+## Fallback behavior and limitations
+
+- Physics-only baseline remains the default if a LightGBM residual model is unavailable or not useful.
+- Missing readings and communication gaps remain `null`/unavailable instead of zero.
+- Forecast alignment is never silently upsampled or guessed.
+- Waterfall components and single-primary-cause accounting are preserved.
+- Synthetic ground-truth labels remain separate from model inputs and are not used to leak labels into predictions.
+- This implementation is intentionally strict: unsupported or unresolved conditions produce a valid versioned output when possible, otherwise the pipeline fails clearly with an actionable error.
+
+
 **Globathon 2026 — Problem Statement 3: Explaining Solar Generation Forecast Variance**
 
 **Repository purpose:** Develop, evaluate and package the ML and deterministic-analysis components for SolarSleuth.

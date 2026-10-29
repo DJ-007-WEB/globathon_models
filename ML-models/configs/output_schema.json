@@ -2,33 +2,56 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "ML Models Output Contract",
   "type": "object",
-  "required": ["schema_version", "summary", "records"],
+  "required": [
+    "schema_version",
+    "analysis_status",
+    "interval",
+    "forecast_energy",
+    "actual_energy",
+    "deviation",
+    "waterfall",
+    "anomalies",
+    "hypotheses",
+    "evidence",
+    "limitations",
+    "unresolved_fields",
+    "model_version",
+    "mapping_version"
+  ],
   "properties": {
     "schema_version": { "type": "string" },
-    "summary": {
-      "type": "object",
-      "required": ["site", "generated_at", "status"],
+    "analysis_status": { "type": "string" },
+    "interval": {
+      "type": ["object", "null"],
       "properties": {
-        "site": { "type": "string" },
-        "generated_at": { "type": "string" },
-        "status": { "type": "string" },
-        "record_count": { "type": "integer", "minimum": 0 }
+        "timestamp_utc": { "type": ["string", "null"] },
+        "device_id": { "type": ["string", "null"] },
+        "source_rows": { "type": ["integer", "null"] }
       }
     },
-    "records": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "required": ["timestamp", "asset_id", "anomaly_score", "decision"],
-        "properties": {
-          "timestamp": { "type": "string" },
-          "asset_id": { "type": "string" },
-          "anomaly_score": { "type": "number" },
-          "decision": { "type": "string" },
-          "causes": { "type": "array" },
-          "energy_impact_kwh": { "type": "number" }
-        }
+    "forecast_energy": { "type": ["number", "null"] },
+    "actual_energy": { "type": ["number", "null"] },
+    "deviation": { "type": ["number", "null"] },
+    "waterfall": {
+      "type": ["object", "null"],
+      "properties": {
+        "status": { "type": ["string", "null"] },
+        "weather_effect_kwh": { "type": ["number", "null"] },
+        "plant_effect_kwh": { "type": ["number", "null"] },
+        "total_deviation_kwh": { "type": ["number", "null"] },
+        "reconciled": { "type": "boolean" }
       }
-    }
-  }
+    },
+    "anomalies": { "type": "array" },
+    "hypotheses": { "type": "array" },
+    "evidence": { "type": "array", "items": { "type": "string" } },
+    "limitations": { "type": "array", "items": { "type": "string" } },
+    "unresolved_fields": { "type": "array", "items": { "type": "string" } },
+    "model_version": { "type": "string" },
+    "mapping_version": { "type": "string" },
+    "status": { "type": ["string", "null"] },
+    "message": { "type": ["string", "null"] },
+    "metrics": { "type": "object" }
+  },
+  "additionalProperties": true
 }
