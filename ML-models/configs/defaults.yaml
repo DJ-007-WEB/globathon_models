@@ -1,0 +1,140 @@
+# Default configuration for the SolarSleuth ML pipeline.
+# Every threshold used by ingestion, mapping and validation lives here.
+# Plant capacity, device count, column names, units, timestamps and time zones
+# are intentionally absent: they must be discovered from the input data.
+
+config_version: "1.0.0"
+seed: 42
+
+# ---------------------------------------------------------------------------
+# Ingestion / file structure
+# ---------------------------------------------------------------------------
+ingestion:
+  csv_encodings:
+    - utf-8-sig
+    - utf-8
+    - cp1252
+    - latin-1
+  csv_delimiters: [",", ";", "\t", "|"]
+  sample_rows: 10
+  max_header_scan_rows: 30
+  header_confidence_min: 0.55
+  header_margin_min: 0.08
+  drop_fully_empty_rows: true
+  drop_fully_empty_columns: false
+  max_device_values: 1000
+  numeric_parse_threshold: 0.95
+
+# ---------------------------------------------------------------------------
+# Time detection
+# ---------------------------------------------------------------------------
+time:
+  # Leave null unless the caller or a column header establishes the time zone.
+  default_timezone: null
+  # Time-zone abbreviations that are unambiguous. Ambiguous abbreviations such
+  # as IST are deliberately excluded and are reported as unresolved.
+  unambiguous_timezone_aliases:
+    UTC: UTC
+    GMT: UTC
+    Z: UTC
+  sampling_interval_candidates_seconds: [300, 600, 900, 1800, 3600]
+  sampling_interval_round_seconds: 1
+  minimum_timestamps_for_interval: 3
+
+# ---------------------------------------------------------------------------
+# Schema mapping
+# ---------------------------------------------------------------------------
+mapping:
+  high_confidence: 0.78
+  minimum_candidate_score: 0.52
+  ambiguity_margin: 0.10
+  fuzzy_min_alias_length: 4
+  fuzzy_min_ratio: 0.84
+  unit_required_roles:
+    - power_ac
+    - power_dc
+    - energy_interval
+    - energy_cumulative
+    - irradiance_poa
+    - irradiance_ghi
+    - ambient_temperature
+    - module_temperature
+    - capacity
+    - forecast
+  generic_ambiguous_headers:
+    power: [power_ac, power_dc]
+    active power: [power_ac, power_dc]
+    output: [power_ac, power_dc]
+    irradiance: [irradiance_poa, irradiance_ghi]
+    solar irradiance: [irradiance_poa, irradiance_ghi]
+    temperature: [ambient_temperature, module_temperature]
+    temp: [ambient_temperature, module_temperature]
+    energy: [energy_interval, energy_cumulative]
+    yield: [energy_interval, energy_cumulative]
+    generation: [energy_interval, energy_cumulative]
+
+# ---------------------------------------------------------------------------
+# Plausibility ranges (used as screening checks, not proof of a fault)
+# ---------------------------------------------------------------------------
+plausibility:
+  irradiance_min_w_m2: 0.0
+  irradiance_max_w_m2: 1500.0
+  ambient_temperature_min_c: -50.0
+  ambient_temperature_max_c: 70.0
+  module_temperature_min_c: -50.0
+  module_temperature_max_c: 100.0
+  power_min_kw: 0.0
+  # Allow a small negative reading for sensor noise before flagging.
+  power_negative_tolerance_kw: 0.0
+  capacity_min_kw: 0.0
+  capacity_tolerance_ratio: 1.20
+  energy_min_kwh: 0.0
+  energy_negative_tolerance_kwh: 0.0
+  allow_negative_power: false
+
+# ---------------------------------------------------------------------------
+# Data quality validation
+# ---------------------------------------------------------------------------
+validation:
+  duplicate_timestamp_tolerance_seconds: 0
+  gap_tolerance_factor: 1.50
+  minimum_gap_seconds: 1.0
+  missing_min_valid_fraction: 0.80
+  cumulative_reset_tolerance: 1.0e-9
+  flatline_min_points: 6
+  flatline_value_tolerance: 1.0e-9
+  flatline_ignore_zero: true
+  flatline_roles:
+    - irradiance_poa
+    - irradiance_ghi
+    - ambient_temperature
+    - module_temperature
+    - power_ac
+    - power_dc
+    - energy_interval
+  night:
+    sun_elevation_threshold_deg: -0.833
+    power_threshold_kw: 0.01
+    irradiance_threshold_w_m2: 5.0
+  location:
+    latitude: null
+    longitude: null
+  # Maximum number of example time ranges retained per check.
+  max_example_ranges: 20
+
+# ---------------------------------------------------------------------------
+# Reserved for later stages (not used by Stage 1)
+# ---------------------------------------------------------------------------
+gamma: 1.4
+persistence_n: 12
+features:
+  normalize: true
+  rolling_window: 24
+  hour_cycle: true
+  include_clear_sky_index: true
+thresholds:
+  zscore: 3.5
+  mad: 6.0
+  cusum: 6.5
+  anomaly_score: 0.85
+  energy_loss_ratio: 0.08

@@ -1,0 +1,426 @@
+# Semantic vocabulary used by the deterministic schema mapper.
+# Aliases are normalized (lower-cased, accents stripped, separators collapsed)
+# before matching.  Add variants here rather than in plant-specific code.
+#
+# Unit aliases are only used when the unit token appears in the original header.
+# A bare magnitude is never used to infer a unit.
+
+vocab_version: "1.0.0"
+
+normalization:
+  lowercase: true
+  strip_accents: true
+  # Characters that separate a header into searchable tokens.
+  token_separators: [" ", "_", "-", ".", "/", "\\", "(", ")", "[", "]", "{", "}", ":", ";", ",", "\t", "\n", "\r"]
+  compact_replacements:
+    "²": "2"
+    "³": "3"
+    "°": "deg"
+
+roles:
+  timestamp:
+    description: Date/time or separate date and time columns.
+    unit_family: null
+    aliases:
+      - timestamp
+      - time stamp
+      - datetime
+      - date time
+      - date_time
+      - ts
+      - time
+      - date
+      - reading time
+      - measurement time
+      - sample time
+      - timestamp local
+      - timestamp utc
+      - fecha
+      - hora
+      - fecha hora
+      - datum
+      - zeit
+      - samay
+
+  irradiance_poa:
+    description: Irradiance measured in the plane of the array (tilted / module plane).
+    unit_family: irradiance
+    aliases:
+      - poa
+      - poa irradiance
+      - gpoa
+      - gti
+      - front gpoa
+      - rear gpoa
+      - plane of array
+      - plane of array irradiance
+      - tilted irradiance
+      - module irradiance
+      - array irradiance
+      - incident irradiance
+      - in plane irradiance
+      - irradiancia poa
+      - irradiance plan
+
+  irradiance_ghi:
+    description: Site horizontal irradiance (global horizontal / pyranometer).
+    unit_family: irradiance
+    aliases:
+      - ghi
+      - global horizontal
+      - global horizontal irradiance
+      - horizontal irradiance
+      - global irradiance
+      - site irradiance
+      - pyranometer
+      - irradiancia global
+      - irradiance horizontale
+
+  ambient_temperature:
+    description: Ambient / air temperature.
+    unit_family: temperature
+    aliases:
+      - ambient temperature
+      - ambient temp
+      - amb temp
+      - ambient temp.
+      - amb. temp.
+      - air temperature
+      - air temp
+      - dry bulb
+      - dry bulb temperature
+      - site temperature
+      - outside temperature
+      - temperature ambient
+      - temperatura ambiente
+      - temp ambiante
+      - umgebungstemperatur
+
+  module_temperature:
+    description: PV module / cell back-sheet temperature.
+    unit_family: temperature
+    aliases:
+      - module temperature
+      - module temp
+      - mod temp
+      - temp mod
+      - temp. mod.
+      - temp module
+      - cell temperature
+      - cell temp
+      - panel temperature
+      - panel temp
+      - backsheet temperature
+      - back sheet temperature
+      - pv temperature
+      - temperatura modulo
+      - temperatura modulo
+      - module Temperatur
+
+  power_ac:
+    description: AC active power at the inverter or plant meter.
+    unit_family: power
+    aliases:
+      - ac power
+      - ac output
+      - active power
+      - real power
+      - output power
+      - inverter power
+      - inverter output
+      - pac
+      - p ac
+      - potencia ac
+      - potencia activa
+      - puissance active
+
+  power_dc:
+    description: DC power at the array / inverter DC input.
+    unit_family: power
+    aliases:
+      - dc power
+      - dc output
+      - dc input
+      - array power
+      - pdc
+      - p dc
+      - pmpp
+      - p mpp
+      - potencia dc
+      - potencia continua
+
+  energy_interval:
+    description: Energy generated during one interval (not cumulative).
+    unit_family: energy
+    aliases:
+      - interval energy
+      - energy interval
+      - energy per interval
+      - period energy
+      - interval yield
+      - energy generated
+      - generation
+      - production
+      - energia intervalo
+      - energie intervalle
+
+  energy_cumulative:
+    description: Cumulative meter / lifetime counter reading.
+    unit_family: energy
+    aliases:
+      - cumulative energy
+      - total energy
+      - total yield
+      - lifetime energy
+      - meter reading
+      - meter energy
+      - cumulative yield
+      - cumulative generation
+      - running total
+      - aggregate energy
+      - energia acumulada
+      - energie cumulee
+
+  device_id:
+    description: Identifier of an inverter, meter, string or other monitored device.
+    unit_family: null
+    aliases:
+      - device id
+      - device
+      - device name
+      - inverter id
+      - inverter
+      - inv
+      - source key
+      - source
+      - asset id
+      - asset
+      - equipment id
+      - equipment
+      - unit id
+      - unit
+      - meter id
+      - meter
+      - string id
+      - channel id
+      - station id
+      - weather station
+      - tag
+      - identificador
+      - dispositivo
+      - inversor
+      - gerat
+      - upakarann id
+
+  capacity:
+    description: Rated / installed DC or AC capacity.
+    unit_family: capacity
+    aliases:
+      - capacity
+      - rated capacity
+      - installed capacity
+      - nominal capacity
+      - nameplate capacity
+      - plant capacity
+      - inverter capacity
+      - rated power
+      - nominal power
+      - installed power
+      - capacity installed
+      - nominal capacity installed
+      - capacidad
+      - potencia nominal
+      - puissance nominale
+      - nennleistung
+
+  availability_status:
+    description: Operating / availability / communication state.
+    unit_family: null
+    aliases:
+      - status
+      - status code
+      - state
+      - availability
+      - operating state
+      - operating status
+      - inverter status
+      - device status
+      - condition
+      - curtailment flag
+      - curtailed
+      - online
+      - estado
+      - etat
+
+  forecast:
+    description: Design or operational forecast of power or energy.
+    unit_family: null
+    aliases:
+      - forecast
+      - forecasted
+      - predicted
+      - prediction
+      - expected
+      - expected generation
+      - expected energy
+      - design generation
+      - design energy
+      - design forecast
+      - scheduled generation
+      - projection
+      - pronostico
+      - prevision
+
+  event_description:
+    description: Free-text event / operator log description.
+    unit_family: null
+    aliases:
+      - event
+      - event description
+      - event text
+      - description
+      - remark
+      - remarks
+      - comment
+      - comments
+      - notes
+      - note
+      - reason
+      - cause
+      - log message
+      - message
+      - evento
+      - descripcion
+
+  event_start:
+    description: Event or outage start time.
+    unit_family: null
+    aliases:
+      - event start
+      - event start time
+      - start time
+      - start timestamp
+      - outage start
+      - fault start
+      - from time
+      - begin time
+      - inicio evento
+      - debut evenement
+
+  event_end:
+    description: Event or outage end time.
+    unit_family: null
+    aliases:
+      - event end
+      - event end time
+      - end time
+      - end timestamp
+      - outage end
+      - fault end
+      - to time
+      - finish time
+      - fin evento
+      - fin evenement
+
+# Unit families.  Canonical units are the units retained internally.
+units:
+  power:
+    canonical: kW
+    aliases:
+      W: [w, watt, watts]
+      kW: [kw, kilowatt, kilowatts]
+      MW: [mw, megawatt, megawatts]
+  energy:
+    canonical: kWh
+    aliases:
+      Wh: [wh, watthour, watt hour, watt hours]
+      kWh: [kwh, kilowatt hour, kilowatt hours]
+      MWh: [mwh, megawatt hour, megawatt hours]
+  irradiance:
+    canonical: W/m2
+    aliases:
+      W/m2: [w/m2, wm2, w m2, watt/m2, watt per square meter, watts per square meter]
+      kW/m2: [kw/m2, kwm2, kw m2, kilowatt/m2, kilowatt per square meter]
+  temperature:
+    canonical: C
+    aliases:
+      C: [c, degc, deg c, celsius, degree celsius, degrees celsius]
+      F: [f, degf, deg f, fahrenheit, degree fahrenheit, degrees fahrenheit]
+  capacity:
+    canonical: kW
+    aliases:
+      Wp: [wp, watt peak, watts peak]
+      kWp: [kwp, kilowatt peak, kilowatts peak]
+      MWp: [mwp, megawatt peak, megawatts peak]
+      kW: [kw]
+      MW: [mw]
+
+# Tokens that identify measurement context but are not device identifiers.
+device_label_stopwords:
+  - ac
+  - dc
+  - poa
+  - ghi
+  - gpoa
+  - gti
+  - active
+  - reactive
+  - real
+  - apparent
+  - power
+  - output
+  - input
+  - energy
+  - yield
+  - generation
+  - production
+  - interval
+  - cumulative
+  - total
+  - daily
+  - lifetime
+  - meter
+  - reading
+  - temperature
+  - temp
+  - ambient
+  - module
+  - cell
+  - panel
+  - backsheet
+  - irradiance
+  - irradiancia
+  - horizontal
+  - global
+  - tilted
+  - plane
+  - array
+  - site
+  - plant
+  - forecast
+  - expected
+  - predicted
+  - status
+  - state
+  - availability
+  - capacity
+  - rated
+  - nominal
+  - installed
+  - nameplate
+  - w
+  - kw
+  - mw
+  - wh
+  - kwh
+  - mwh
+  - wp
+  - kwp
+  - mwp
+  - c
+  - f
+  - degc
+  - degf
+  - m2
+  - min
+  - hour

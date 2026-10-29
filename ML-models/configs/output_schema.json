@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ML Models Output Contract",
+  "type": "object",
+  "required": ["schema_version", "summary", "records"],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "summary": {
+      "type": "object",
+      "required": ["site", "generated_at", "status"],
+      "properties": {
+        "site": { "type": "string" },
+        "generated_at": { "type": "string" },
+        "status": { "type": "string" },
+        "record_count": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "records": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["timestamp", "asset_id", "anomaly_score", "decision"],
+        "properties": {
+          "timestamp": { "type": "string" },
+          "asset_id": { "type": "string" },
+          "anomaly_score": { "type": "number" },
+          "decision": { "type": "string" },
+          "causes": { "type": "array" },
+          "energy_impact_kwh": { "type": "number" }
+        }
+      }
+    }
+  }
+}

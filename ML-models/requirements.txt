@@ -1,0 +1,9 @@
+numpy>=1.26
+pandas>=2.1
+pyyaml>=6.0
+openpyxl>=3.1
+scikit-learn>=1.4
+lightgbm>=4.0
+pvlib>=0.10
+jsonschema>=4.0
+pytest>=8.0
