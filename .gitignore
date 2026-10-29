@@ -1,0 +1,24 @@
+@'
+# Python environment
+.venv-ai/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+
+# Local datasets
+data/
+
+# Downloaded model weights and checkpoints
+models/
+checkpoints/
+
+# Environment secrets
+.env
+.env.*
+!.env.example
+
+# Training outputs
+outputs/
+runs/
+'@ | Set-Content -Encoding utf8 .gitignore
