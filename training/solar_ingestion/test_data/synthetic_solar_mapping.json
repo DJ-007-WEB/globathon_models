@@ -1,0 +1,21 @@
+{
+  "columns": {
+    "timestamp": "Measurement Time",
+    "plant_id": "Site ID",
+    "device_id": "Inverter ID",
+    "actual_power": "Measured AC Power (kW)",
+    "expected_power": "Expected Power (kW)",
+    "irradiance": "POA Irradiance (W/m2)",
+    "inverter_status": "Inverter State",
+    "ambient_temperature": "Ambient Temp (C)",
+    "energy": "Energy Generated (kWh)"
+  },
+  "units": {
+    "actual_power": "kW",
+    "expected_power": "kW",
+    "irradiance": "W/m2",
+    "ambient_temperature": "C",
+    "energy": "kWh"
+  },
+  "notes": "Synthetic test fixture only. Includes missing measurements, communication loss, a negative power value, a low-output interval, an untrusted operator note, and one duplicate timestamp. The expected power values are illustrative, not engineering-grade forecasts."
+}
