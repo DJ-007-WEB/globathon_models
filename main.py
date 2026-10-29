@@ -132,6 +132,10 @@ async def analyze(request: AnalyzeRequest) -> AnalyzeResponse:
             detail=f"Cannot reach the local LLM API at {LLM_API_URL}. Confirm that it is running.",
         ) from exc
 
+    # Reject malformed upstream bodies cleanly rather than leaking a 500 response.
+    if not isinstance(raw_result, dict):
+        raise HTTPException(status_code=502, detail="Local LLM service returned a JSON value instead of an object.")
+
     # Normalize the request ID at this boundary and validate the upstream contract.
     raw_result["request_id"] = request_id
     try:
