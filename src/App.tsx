@@ -13,6 +13,7 @@ type MlAnalysis = Record<string, any>;
 type ApiResult = { request_id?: string | null; plant_id?: string; model?: string; analysis: Analysis; ml_analysis?: MlAnalysis | null; analysis_mode?: string | null };
 type Turn = { id: string; question: string; createdAt: number; result?: ApiResult; error?: string; loading?: boolean };
 type ChatMessage = { role: "user" | "assistant"; content: string | Analysis; created_at?: string };
+type Plant = { plant_id: string; name: string; location?: string | null; capacity_kw?: number | null; timezone?: string | null };
 async function loadStoredAnalyses(base: string, token: string): Promise<Turn[]> {
   const headers = { Authorization: "Bearer " + token };
   let response: Response;
@@ -163,7 +164,7 @@ function AnalysisResponse({ result }: { result: ApiResult }) {
 export default function App() {
   const [apiBase, setApiBase] = useState(getApiBase);
   const [theme, setTheme] = useState<"light"|"dark">("light");
-  const [page, setPage] = useState<"overview"|"data"|"validation"|"report"|"assistant">("overview");
+  const [page, setPage] = useState<"overview"|"plants"|"data"|"validation"|"report"|"assistant">("overview");
   const [showAuth, setShowAuth] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [authed, setAuthed] = useState(false);
@@ -188,6 +189,13 @@ export default function App() {
   const [error, setError] = useState("");
   const [customApi, setCustomApi] = useState(getApiBase);
   const [plantId, setPlantId] = useState("");
+  const [plants, setPlants] = useState<Plant[]>([]);
+  const [plantName, setPlantName] = useState("");
+  const [plantLocation, setPlantLocation] = useState("");
+  const [plantCapacity, setPlantCapacity] = useState("");
+  const [plantTimezone, setPlantTimezone] = useState("Asia/Kolkata");
+  const [plantBusy, setPlantBusy] = useState(false);
+  const [plantError, setPlantError] = useState("");
   const [datasetFile, setDatasetFile] = useState<File | null>(null);
   const [dragActive, setDragActive] = useState(false);
   const [uploadStage, setUploadStage] = useState<"idle"|"running"|"complete"|"failed">("idle");
@@ -204,7 +212,7 @@ export default function App() {
         setAccessToken(token);
         fetch(getApiBase()+"/api/v1/auth/me",{headers:{Authorization:"Bearer "+token}})
           .then(async response=>{if(!response.ok)throw new Error("Session expired");return response.json();})
-          .then(async user=>{setAuthed(true);setUserName(user.name);setEmail(user.email);setBusinessName(user.business_name||"");const history=await loadStoredAnalyses(getApiBase(),token);setTurns(history);setSelectedTurnId(history[history.length-1]?.id||"");})
+          .then(async user=>{setAuthed(true);setUserName(user.name);setEmail(user.email);setBusinessName(user.business_name||"");const history=await loadStoredAnalyses(getApiBase(),token);setTurns(history);setSelectedTurnId(history[history.length-1]?.id||"");try{await refreshPlants(getApiBase(),token)}catch{}})
           .catch(()=>{localStorage.removeItem("solarsleuth_access_token");setAccessToken("");});
       }
     } catch {}
@@ -229,6 +237,39 @@ export default function App() {
   },[apiBase]);
   useEffect(() => { void checkReady(); const id=window.setInterval(()=>void checkReady(),15000); return ()=>window.clearInterval(id); },[checkReady]);
 
+
+  const refreshPlants = async (base = apiBase, token = accessToken) => {
+    if (!token) return;
+    const response = await fetch(base + "/api/v1/plants", {
+      headers: { Authorization: "Bearer " + token }, signal: AbortSignal.timeout(15000)
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Unable to load plants.");
+    const items: Plant[] = Array.isArray(data.items) ? data.items : [];
+    setPlants(items);
+    setPlantId(current => current || items[0]?.plant_id || "");
+  };
+  const createPlant = async (e: FormEvent) => {
+    e.preventDefault();
+    const name = plantName.trim();
+    const id = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    if (name.length < 2 || !id) { setPlantError("Enter a valid plant name."); return; }
+    setPlantBusy(true); setPlantError("");
+    try {
+      const response = await fetch(apiBase + "/api/v1/plants", {
+        method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + accessToken },
+        body: JSON.stringify({ plant_id: id, name, location: plantLocation.trim() || null,
+          capacity_kw: plantCapacity.trim() ? Number(plantCapacity) : null,
+          timezone: plantTimezone.trim() || null }),
+        signal: AbortSignal.timeout(15000)
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Unable to register this plant.");
+      await refreshPlants();
+      setPlantId(data.plant_id); setPlantName(""); setPlantLocation(""); setPlantCapacity("");
+    } catch (err) { setPlantError(err instanceof Error ? err.message : "Unable to register plant."); }
+    finally { setPlantBusy(false); }
+  };
   const startDemo = () => { if(authed){setShowAuth(false);setPage("overview")}else setShowAuth(true); };
   const login = async (e: FormEvent) => {
     e.preventDefault(); setAuthError("");
@@ -253,7 +294,7 @@ export default function App() {
       if(!data.access_token||!data.user)throw new Error("The account service returned an invalid response.");
       localStorage.setItem("solarsleuth_access_token",data.access_token);
       setAccessToken(data.access_token);setUserName(data.user.name);setEmail(data.user.email);
-      setBusinessName(data.user.business_name||"");const history=await loadStoredAnalyses(apiBase,data.access_token);setTurns(history);setSelectedTurnId(history[history.length-1]?.id||"");setAuthed(true);setShowAuth(false);setPage("overview");
+      setBusinessName(data.user.business_name||"");const history=await loadStoredAnalyses(apiBase,data.access_token);setTurns(history);setSelectedTurnId(history[history.length-1]?.id||"");try{await refreshPlants(apiBase,data.access_token)}catch{}setAuthed(true);setShowAuth(false);setPage("overview");
       setPassword("");setConfirmPassword("");
     }catch(err){
       setAuthError(err instanceof Error?err.message:"Unable to reach the account service. Check the backend and MongoDB configuration.");
@@ -318,7 +359,7 @@ export default function App() {
     } finally { setChatBusy(false); }
   };
   const statusText=ready==="ready"?"ML + local AI ready":ready==="warming"?"ML connected · local AI model warming up":ready==="checking"?"Checking backend, ML and AI services":"Backend or a dependent service unavailable";
-  const nav=[{id:"overview" as const,label:"Overview",icon:"◫"},{id:"data" as const,label:"Upload & analyse",icon:"⇧"},{id:"validation" as const,label:"Validation Lab",icon:"✓"},{id:"report" as const,label:"Reports",icon:"▤"},{id:"assistant" as const,label:"AI explanation",icon:"✳"}];
+  const nav=[{id:"overview" as const,label:"Overview",icon:"◫"},{id:"plants" as const,label:"Plants",icon:"⌂"},{id:"data" as const,label:"Upload & analyse",icon:"⇧"},{id:"validation" as const,label:"Validation Lab",icon:"✓"},{id:"report" as const,label:"Reports",icon:"▤"},{id:"assistant" as const,label:"AI explanation",icon:"✳"}];
   const latestTurn = turns.find(t=>t.id===selectedTurnId && t.result) || turns.filter(t=>t.result).slice(-1)[0];
 
   return <>
@@ -335,8 +376,16 @@ export default function App() {
       <main className="workspace"><div className="workspace-head"><div><div className="breadcrumb">WORKSPACE <span>/</span> <b>{nav.find(n=>n.id===page)?.label}</b></div><h1>{page==="overview"?"Plant overview":page==="data"?"Upload & analyse":page==="validation"?"Validation Lab":page==="report"?"Reports":"AI explanation"}</h1><p>{page==="overview"?"A file-driven view of your latest analysis and local service readiness.":page==="data"?"Upload a CSV or Excel workbook for validation, deterministic analysis, and AI explanation.":page==="validation"?"Inspect data-quality checks, ML evidence and findings that need operational verification.":page==="report"?"Review and print the latest dataset-derived report.":"Read the detailed explanation generated from the latest uploaded dataset."}</p></div><div className="head-actions"><span className="plant-select-label">LATEST UPLOAD</span><div className="plant-select"><span className="plant-icon">☼</span><span><b>{turns.filter(t=>t.result).slice(-1)[0]?.question.replace("Dataset analysis: ","") || "No dataset analysed"}</b><small>{turns.filter(t=>t.result).length} successful analysis result(s)</small></span></div></div></div>
       <section className="controls-panel"><div><label>Service status</label><div className="engine-status"><span className={"status-dot "+(ready==="ready"?"":"")}></span>{statusText}</div><small className="service-breakdown">ML API: {serviceChecks.ml?"reachable":"unavailable"} · LLM API: {serviceChecks.llm?"reachable":"unavailable"} · Model: {serviceChecks.model?"loaded":"not loaded"}</small></div><div><label>Backend API</label><input aria-label="Backend API URL" value={customApi} onChange={e=>setCustomApi(e.target.value)} style={{maxWidth:280}}/></div><button className="small-action" onClick={()=>{const b=customApi.trim().replace(/\/$/,"");if(b){setApiBase(b);try{localStorage.setItem("solarsleuth_api_base",b)}catch{}setReady("checking");setTimeout(()=>void checkReady(),50)}}}>Connect</button></section>
       {page==="overview"&&<div className="analysis-card"><div className="eyebrow">FILE-DRIVEN SOLAR INTELLIGENCE</div><h2>{turns.some(t=>t.result)?"Latest plant analysis":"Start with your plant data"}</h2><p className="analysis-summary">{turns.some(t=>t.result)?"Your latest report is based on the uploaded dataset and deterministic ML output. Open Reports to review or save it.":"Upload a CSV or Excel workbook. SolarSleuth validates the file, maps supported columns, runs deterministic analysis, and asks the local AI model to explain the evidence."}</p><div className="metric-grid"><div className="metric-card"><span>Successful analyses</span><strong>{turns.filter(t=>t.result).length}</strong></div><div className="metric-card"><span>Service connection</span><strong>{ready==="ready"?"Ready":ready==="warming"?"Warming up":ready==="checking"?"Checking":"Unavailable"}</strong></div><div className="metric-card"><span>Latest dataset</span><strong>{turns.filter(t=>t.result).length? "Processed":"Not uploaded"}</strong></div></div><button className="primary-action" onClick={()=>setPage("data")}>Upload plant data ↗</button></div>}
+
+      {page==="plants"&&<div className="analysis-card"><div className="eyebrow">ASSET MANAGEMENT · WORKSPACE</div><h2>Plant directory</h2><p className="analysis-summary">Register the solar plants managed by this business workspace. Plant identifiers are unique within your workspace and are attached to future analysis uploads.</p>
+        {plantError&&<div className="inline-error" role="alert">{plantError}</div>}
+        <div className="dataset-profile" style={{marginBottom:18}}><div className="dataset-profile-head"><h4>Registered plants</h4><span>{plants.length} plants</span></div>
+          {plants.length===0?<p>No plants registered yet. Add your first plant below.</p>:<div className="dataset-facts">{plants.map(plant=><div key={plant.plant_id}><small>{plant.plant_id}</small><strong>{plant.name}</strong><span>{plant.location||"Location not set"}{plant.capacity_kw?" · "+plant.capacity_kw.toLocaleString()+" kW":""}</span><button type="button" className="small-action" onClick={()=>{setPlantId(plant.plant_id);setPage("data")}}>Use for upload ↗</button></div>)}</div>}
+        </div>
+        <form className="field-grid" onSubmit={createPlant}><div className="field-card"><label htmlFor="plantName">Plant name</label><input id="plantName" value={plantName} onChange={e=>setPlantName(e.target.value)} maxLength={120} placeholder="e.g. West Solar Farm" required/></div><div className="field-card"><label htmlFor="plantLocation">Location (optional)</label><input id="plantLocation" value={plantLocation} onChange={e=>setPlantLocation(e.target.value)} maxLength={200} placeholder="City / site"/></div><div className="field-card"><label htmlFor="plantCapacity">Installed capacity in kW (optional)</label><input id="plantCapacity" type="number" min="0.01" max="1000000" step="any" value={plantCapacity} onChange={e=>setPlantCapacity(e.target.value)} placeholder="e.g. 250"/></div><div className="field-card"><label htmlFor="plantTimezone">Plant timezone</label><input id="plantTimezone" value={plantTimezone} onChange={e=>setPlantTimezone(e.target.value)} maxLength={64} placeholder="Asia/Kolkata"/></div><div style={{gridColumn:"1 / -1"}}><button className="primary-action" type="submit" disabled={plantBusy||!plantName.trim()}>{plantBusy?"Saving plant…":"Register plant ↗"}</button></div></form>
+      </div>}
       {page==="data"&&<div className="analysis-card"><div className="eyebrow">DATA INGESTION · CSV / XLSX</div><h2>Upload plant operating data</h2><p className="analysis-summary">The backend sends the file to the deterministic ML service first. Only its structured analysis is passed to the local LLM for explanation.</p><form onSubmit={uploadDataset} className="field-grid"><div className={"field-card upload-dropzone "+(dragActive?"drag-active":"")} style={{gridColumn:"1 / -1"}} onDragOver={e=>{e.preventDefault();setDragActive(true)}} onDragLeave={e=>{e.preventDefault();setDragActive(false)}} onDrop={e=>{e.preventDefault();setDragActive(false);const file=e.dataTransfer.files?.[0];if(file){setDatasetFile(file);setError("");setUploadStage("idle");}}}><label htmlFor="datasetFile">Operating data file</label><input id="datasetFile" type="file" accept=".csv,.xlsx" onChange={e=>{setDatasetFile(e.target.files?.[0]||null);setError("");setUploadStage("idle");}} required/><small>Drop a CSV or XLSX here, or choose a file · Maximum 25 MiB · One operating-data file per request</small>{datasetFile&&<div className="selected-file"><strong>{datasetFile.name}</strong><span>{(datasetFile.size/1024/1024).toFixed(2)} MiB</span><button type="button" className="small-action" onClick={()=>{setDatasetFile(null);setUploadStage("idle");}}>Remove</button></div>}</div>
-<div className="field-card"><label htmlFor="plantId">Plant identifier (optional)</label><input id="plantId" value={plantId} maxLength={128} onChange={e=>setPlantId(e.target.value)} placeholder="Enter a plant identifier"/><small>Used as report metadata; measurements always come from the uploaded file.</small></div><div className="field-card"><label htmlFor="uploadMode">Analysis mode</label><select id="uploadMode" value={uploadMode} onChange={e=>setUploadMode(e.target.value)}><option value="auto">Automatic</option><option value="snapshot">Snapshot</option><option value="full">Full time-series</option></select></div><div className="field-card"><label htmlFor="uploadTimezone">IANA timezone (optional)</label><input id="uploadTimezone" value={uploadTimezone} onChange={e=>setUploadTimezone(e.target.value)} placeholder="Asia/Kolkata"/></div><div className="field-card"><label htmlFor="uploadInterval">Interval minutes (optional)</label><input id="uploadInterval" type="number" min="0.01" step="any" value={uploadInterval} onChange={e=>setUploadInterval(e.target.value)} placeholder="Auto-detect"/></div><div className="field-card"><label htmlFor="uploadSheet">Excel sheet name (optional)</label><input id="uploadSheet" value={uploadSheet} onChange={e=>setUploadSheet(e.target.value)} placeholder="First sheet by default"/></div><div style={{gridColumn:"1 / -1"}}><button className="primary-action" type="submit" disabled={busy||!datasetFile}>{busy?<><span className="inline-spinner" aria-hidden="true"/> Analysing dataset…</>:"Upload and analyse ↗"}</button>{error&&<div className="inline-error" role="alert">{error}</div>}{uploadStage==="running"&&<p className="pipeline-status" role="status">Your file has been sent to the backend. Validation, deterministic ML analysis and local AI explanation are running in sequence.</p>}{uploadStage==="complete"&&<p className="pipeline-status success" role="status">Analysis completed. Review the ML evidence and AI explanation.</p>}{uploadStage==="failed"&&<p className="pipeline-status failed" role="status">The analysis could not be completed. Review the error above and retry when the services are ready.</p>}</div></form><p className="inline-note" style={{marginTop:14}}>The current HTTP integration accepts one operating-data file. The ML Python pipeline supports additional context inputs, but multi-file weather/device/forecast/event-log upload is not yet exposed here.</p><p className="inline-note">SolarSleuth is file-first: plant readings are never entered manually in the application.</p></div>}
+<div className="field-card"><label htmlFor="plantId">Registered plant</label>{plants.length>0?<select id="plantId" value={plantId} onChange={e=>{setPlantId(e.target.value);const selected=plants.find(p=>p.plant_id===e.target.value);if(selected?.timezone)setUploadTimezone(selected.timezone)}}>{plants.map(plant=><option key={plant.plant_id} value={plant.plant_id}>{plant.name} · {plant.plant_id}</option>)}</select>:<><input id="plantId" value={plantId} maxLength={128} onChange={e=>setPlantId(e.target.value)} placeholder="Enter a plant identifier"/><small>No registered plants yet. Add one in Plant directory, or enter an identifier for legacy reports.</small></>}<small>Plant metadata is associated with this report; measurements always come from the uploaded file.</small></div><div className="field-card"><label htmlFor="uploadMode">Analysis mode</label><select id="uploadMode" value={uploadMode} onChange={e=>setUploadMode(e.target.value)}><option value="auto">Automatic</option><option value="snapshot">Snapshot</option><option value="full">Full time-series</option></select></div><div className="field-card"><label htmlFor="uploadTimezone">IANA timezone (optional)</label><input id="uploadTimezone" value={uploadTimezone} onChange={e=>setUploadTimezone(e.target.value)} placeholder="Asia/Kolkata"/></div><div className="field-card"><label htmlFor="uploadInterval">Interval minutes (optional)</label><input id="uploadInterval" type="number" min="0.01" step="any" value={uploadInterval} onChange={e=>setUploadInterval(e.target.value)} placeholder="Auto-detect"/></div><div className="field-card"><label htmlFor="uploadSheet">Excel sheet name (optional)</label><input id="uploadSheet" value={uploadSheet} onChange={e=>setUploadSheet(e.target.value)} placeholder="First sheet by default"/></div><div style={{gridColumn:"1 / -1"}}><button className="primary-action" type="submit" disabled={busy||!datasetFile}>{busy?<><span className="inline-spinner" aria-hidden="true"/> Analysing dataset…</>:"Upload and analyse ↗"}</button>{error&&<div className="inline-error" role="alert">{error}</div>}{uploadStage==="running"&&<p className="pipeline-status" role="status">Your file has been sent to the backend. Validation, deterministic ML analysis and local AI explanation are running in sequence.</p>}{uploadStage==="complete"&&<p className="pipeline-status success" role="status">Analysis completed. Review the ML evidence and AI explanation.</p>}{uploadStage==="failed"&&<p className="pipeline-status failed" role="status">The analysis could not be completed. Review the error above and retry when the services are ready.</p>}</div></form><p className="inline-note" style={{marginTop:14}}>The current HTTP integration accepts one operating-data file. The ML Python pipeline supports additional context inputs, but multi-file weather/device/forecast/event-log upload is not yet exposed here.</p><p className="inline-note">SolarSleuth is file-first: plant readings are never entered manually in the application.</p></div>}
       {page==="validation"&&(latestTurn?.result?.ml_analysis ? <ValidationLab result={latestTurn.result} datasetName={latestTurn.question.replace("Dataset analysis: ","")}/> : <div className="analysis-card analysis-empty"><div className="empty-icon">✓</div><h3>No analysis to validate yet</h3><p>Upload a CSV or Excel workbook first. The Validation Lab will show the data-quality checks and evidence returned by the deterministic ML service.</p><button className="primary-action" onClick={()=>setPage("data")}>Upload plant data ↗</button></div>)}
       {page==="report"&&<div className="analysis-card report"><div className="analysis-topline noprint"><div><div className="eyebrow">REPORT</div><h2>Latest analysis report</h2><p className="analysis-meta">Generated from the latest successful uploaded-dataset analysis.</p></div><button className="small-action" onClick={()=>window.print()} disabled={!turns.some(t=>t.result)}>Print / Save PDF</button></div>{turns.filter(t=>t.result).map(t=><button key={t.id} type="button" className="small-action" style={{margin:"0 8px 12px 0"}} onClick={()=>setSelectedTurnId(t.id)}>{t.question.replace("Dataset analysis: ","")} · {new Date(t.createdAt).toLocaleDateString()}</button>)}{turns.filter(t=>t.result&&t.id===latestTurn?.id).map(t=><div key={t.id} className="report-content"><div className="report-heading"><div className="eyebrow">SOLARSLEUTH · SOLAR PERFORMANCE INTELLIGENCE</div><h1>Plant performance analysis</h1><p>Dataset: {t.question.replace("Dataset analysis: ","")}</p><p>Generated: {new Date(t.createdAt).toLocaleString()}</p><p>Plant: {t.result!.plant_id || "Not specified"} · Mode: {t.result!.analysis_mode || "Not specified"}</p><p>Request ID: {t.result!.request_id || "Not provided"}</p></div><h3>Executive analysis</h3><AnalysisResponse result={t.result!}/></div>)}{!turns.some(t=>t.result)&&<div className="analysis-empty"><p>No successful analysis is available yet.</p><button className="primary-action" onClick={()=>setPage("data")}>Run an analysis ↗</button></div>}</div>}
       {page==="assistant"&&<><div className="analysis-card"><div className="analysis-topline"><div><div className="eyebrow">LOCAL MODEL · QWEN</div><h2>AI explanation</h2><p className="analysis-meta">Detailed explanations are generated from the deterministic ML result returned by your uploaded dataset.</p></div><span className="analysis-meta">Saved workspace history</span></div><p className="analysis-meta">Ask questions about the selected saved report. Answers use its deterministic ML evidence; numerical results remain unchanged.</p>
