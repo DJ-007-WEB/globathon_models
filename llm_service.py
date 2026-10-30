@@ -10,9 +10,6 @@ import threading
 from pathlib import Path
 from typing import Any
 
-from peft import PeftConfig, PeftModel
-from transformers import AutoModelForCausalLM, AutoTokenizer
-
 from schemas import AnalysisRequest, AnalysisResponse
 
 SYSTEM_PROMPT = """You are the explanation-only layer for SolarSleuth.
@@ -80,6 +77,9 @@ class LLMService:
                     f"No adapter_config.json in {self.adapter_path.resolve()}. "
                     "The complete PEFT adapter export is required."
                 )
+
+            from peft import PeftConfig, PeftModel
+            from transformers import AutoModelForCausalLM, AutoTokenizer
 
             peft_config = PeftConfig.from_pretrained(self.adapter_path)
             base_name = self.model_name or getattr(peft_config, "base_model_name_or_path", None)
