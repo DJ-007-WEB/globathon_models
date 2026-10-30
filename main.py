@@ -88,6 +88,11 @@ async def _post_llm(payload: dict) -> dict:
     return value
 
 
+# Compatibility seam retained for existing manual-input callers and tests.
+async def forward_to_llm(payload: dict) -> dict:
+    return await _post_llm(payload)
+
+
 async def _run_ml(
     content: bytes,
     filename: str,
@@ -167,7 +172,7 @@ async def analyze(request: AnalyzeRequest) -> AnalyzeResponse:
     request_id = request.request_id or str(uuid4())
     payload = request.model_dump()
     payload["request_id"] = request_id
-    raw = await _post_llm(payload)
+    raw = await forward_to_llm(payload)
     raw["request_id"] = request_id
     raw.setdefault("plant_id", request.plant_id)
     return AnalyzeResponse.model_validate(raw)
