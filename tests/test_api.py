@@ -28,6 +28,7 @@ def test_ready_reports_degraded_when_services_are_offline(monkeypatch):
 def test_production_browser_access_requires_bearer(monkeypatch):
     monkeypatch.setattr(main, "ENVIRONMENT", "production")
     monkeypatch.setattr(main, "API_ACCESS_TOKEN", "test-access-token")
+    monkeypatch.setattr(main, "SERVICE_TOKEN", "test-internal-token")
     with TestClient(main.app) as client:
         denied = client.post("/api/v1/analyze/upload", files={"file": ("plant.csv", b"t,p\\n1,2", "text/csv")})
         allowed = client.post(
