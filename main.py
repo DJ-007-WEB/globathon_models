@@ -240,6 +240,12 @@ async def analyze_dataset(
         interval_minutes=interval_minutes,
         sheet_name=sheet_name,
     )
+    if ml_result.get("analysis_status") in {"failed", "invalid_input"}:
+        status_code = 422 if ml_result.get("analysis_status") == "invalid_input" else 502
+        raise HTTPException(
+            status_code=status_code,
+            detail="The ML pipeline could not produce a valid analysis for this dataset. Review the file format, timestamps and required measurements.",
+        )
     compact = _compact_ml_result(ml_result)
     llm_payload = {
         "request_id": request_id,
