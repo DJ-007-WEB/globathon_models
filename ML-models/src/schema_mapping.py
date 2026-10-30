@@ -32,7 +32,17 @@ NUMERIC_ROLES = {
     "ambient_temperature",
     "module_temperature",
     "capacity",
+    "dc_capacity",
+    "inverter_efficiency",
+    "system_losses",
+    "temperature_coefficient",
+    "sun_elevation",
+    "latitude",
+    "longitude",
     "forecast",
+    "forecast_energy",
+    "forecast_power",
+    "forecast_poa",
 }
 MEASUREMENT_ROLES = {
     "power_ac",
@@ -44,8 +54,11 @@ MEASUREMENT_ROLES = {
     "ambient_temperature",
     "module_temperature",
     "forecast",
+    "forecast_energy",
+    "forecast_power",
+    "forecast_poa",
 }
-DEDUPE_ROLES = MEASUREMENT_ROLES | {"capacity"}
+DEDUPE_ROLES = MEASUREMENT_ROLES | {"capacity", "dc_capacity"}
 UNIT_FAMILY_ROLES = {
     "power_ac": "power",
     "power_dc": "power",
@@ -56,6 +69,10 @@ UNIT_FAMILY_ROLES = {
     "ambient_temperature": "temperature",
     "module_temperature": "temperature",
     "capacity": "capacity",
+    "dc_capacity": "capacity",
+    "forecast_energy": "energy",
+    "forecast_power": "power",
+    "forecast_poa": "irradiance",
 }
 GENERIC_DEVICE_LABELS = {
     "device",
@@ -91,15 +108,17 @@ ROLE_NEGATIVE_TOKENS: dict[str, set[str]] = {
         "flag",
     },
     "timestamp": {"interval", "duration", "elapsed", "minutes", "minute", "seconds", "hours"},
-    "power_ac": {"reactive", "apparent", "factor", "voltage", "current", "frequency", "efficiency", "energy", "yield", "temperature", "irradiance"},
-    "power_dc": {"reactive", "apparent", "factor", "voltage", "current", "frequency", "efficiency", "energy", "yield", "temperature", "irradiance"},
-    "energy_interval": {"power", "reactive", "factor", "voltage", "current", "frequency", "efficiency", "temperature", "irradiance"},
-    "energy_cumulative": {"power", "reactive", "factor", "voltage", "current", "frequency", "efficiency", "temperature", "irradiance"},
-    "irradiance_poa": {"power", "energy", "voltage", "current", "frequency", "temperature"},
-    "irradiance_ghi": {"power", "energy", "voltage", "current", "frequency", "temperature"},
-    "ambient_temperature": {"power", "energy", "voltage", "current", "frequency", "efficiency"},
-    "module_temperature": {"power", "energy", "voltage", "current", "frequency", "efficiency"},
-    "capacity": {"factor", "temperature", "irradiance", "voltage", "current"},
+    "power_ac": {"reactive", "apparent", "factor", "voltage", "current", "frequency", "efficiency", "energy", "yield", "temperature", "irradiance", "rated", "capacity", "nameplate", "installed", "nominal", "forecast", "predicted", "expected"},
+    "power_dc": {"reactive", "apparent", "factor", "voltage", "current", "frequency", "efficiency", "energy", "yield", "temperature", "irradiance", "rated", "capacity", "nameplate", "installed", "nominal", "forecast", "predicted", "expected"},
+    "energy_interval": {"power", "reactive", "factor", "voltage", "current", "frequency", "efficiency", "temperature", "irradiance", "cumulative", "total", "lifetime", "meter", "running", "aggregate", "forecast", "predicted", "expected"},
+    "energy_cumulative": {"power", "reactive", "factor", "voltage", "current", "frequency", "efficiency", "temperature", "irradiance", "interval", "period", "per", "forecast", "predicted", "expected"},
+    "irradiance_poa": {"power", "energy", "voltage", "current", "frequency", "temperature", "forecast", "predicted", "expected"},
+    "irradiance_ghi": {"power", "energy", "voltage", "current", "frequency", "temperature", "forecast", "predicted", "expected"},
+    "ambient_temperature": {"power", "energy", "voltage", "current", "frequency", "efficiency", "forecast", "predicted", "expected"},
+    "module_temperature": {"power", "energy", "voltage", "current", "frequency", "efficiency", "coefficient", "forecast", "predicted", "expected"},
+    "capacity": {"factor", "temperature", "irradiance", "voltage", "current", "dc"},
+    "dc_capacity": {"factor", "temperature", "irradiance", "voltage", "current", "ac"},
+    "forecast": {"energy", "power", "poa", "irradiance", "temperature", "ghi", "dni", "dhi"},
 }
 
 

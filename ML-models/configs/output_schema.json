@@ -1,12 +1,18 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "ML Models Output Contract",
+  "title": "ML Models Analysis Contract v2",
   "type": "object",
+  "additionalProperties": false,
   "required": [
     "schema_version",
     "analysis_status",
+    "analysis_mode",
+    "summary",
+    "request",
     "interval",
+    "energy",
     "forecast_energy",
+    "expected_energy",
     "actual_energy",
     "deviation",
     "waterfall",
@@ -15,43 +21,352 @@
     "evidence",
     "limitations",
     "unresolved_fields",
+    "missing_required_fields",
+    "data_quality",
+    "capabilities",
+    "units",
     "model_version",
-    "mapping_version"
+    "mapping_version",
+    "config_version",
+    "vocab_version",
+    "method",
+    "model_status",
+    "errors"
   ],
   "properties": {
-    "schema_version": { "type": "string" },
-    "analysis_status": { "type": "string" },
-    "interval": {
-      "type": ["object", "null"],
+    "schema_version": { "const": "2.0.0" },
+    "analysis_status": {
+      "type": "string",
+      "enum": ["success", "partial", "invalid_input", "failed"]
+    },
+    "analysis_mode": { "type": "string", "enum": ["snapshot", "full"] },
+    "summary": { "type": "string" },
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["plant_id", "source_files", "timezone", "interval_minutes", "mode_requested"],
       "properties": {
-        "timestamp_utc": { "type": ["string", "null"] },
-        "device_id": { "type": ["string", "null"] },
-        "source_rows": { "type": ["integer", "null"] }
+        "plant_id": { "type": ["string", "null"] },
+        "source_files": { "type": "array", "items": { "type": "string" } },
+        "timezone": { "type": ["string", "null"] },
+        "interval_minutes": { "type": ["number", "null"] },
+        "mode_requested": { "type": "string", "enum": ["auto", "snapshot", "full"] }
+      }
+    },
+    "interval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "start_utc",
+        "end_utc",
+        "timezone",
+        "timestamp_basis",
+        "duration_minutes",
+        "sampling_interval_seconds",
+        "device_count",
+        "row_count"
+      ],
+      "properties": {
+        "start_utc": { "type": ["string", "null"] },
+        "end_utc": { "type": ["string", "null"] },
+        "timezone": { "type": ["string", "null"] },
+        "timestamp_basis": { "type": "string", "enum": ["utc", "local", "unresolved"] },
+        "duration_minutes": { "type": ["number", "null"], "minimum": 0 },
+        "sampling_interval_seconds": { "type": ["number", "null"], "exclusiveMinimum": 0 },
+        "device_count": { "type": "integer", "minimum": 0 },
+        "row_count": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "energy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["forecast", "expected", "actual", "deviation"],
+      "properties": {
+        "forecast": { "$ref": "#/$defs/energy_component" },
+        "expected": { "$ref": "#/$defs/energy_component" },
+        "actual": { "$ref": "#/$defs/energy_component" },
+        "deviation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["value_kwh", "status", "source", "completeness", "aggregation_period", "unit", "reason", "sign_convention"],
+          "properties": {
+            "value_kwh": { "type": ["number", "null"] },
+            "status": { "type": "string", "enum": ["available", "partial", "unavailable", "not_applicable"] },
+            "source": { "type": "string" },
+            "completeness": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+            "aggregation_period": { "type": "string" },
+            "unit": { "type": "string", "enum": ["kWh"] },
+            "reason": { "type": ["string", "null"] },
+            "sign_convention": { "type": "string", "enum": ["actual_minus_forecast"] }
+          }
+        }
       }
     },
     "forecast_energy": { "type": ["number", "null"] },
+    "expected_energy": { "type": ["number", "null"] },
     "actual_energy": { "type": ["number", "null"] },
     "deviation": { "type": ["number", "null"] },
     "waterfall": {
-      "type": ["object", "null"],
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "reason",
+        "forecast_energy_kwh",
+        "expected_energy_kwh",
+        "actual_energy_kwh",
+        "weather_effect_kwh",
+        "plant_effect_kwh",
+        "total_deviation_kwh",
+        "observed_deviation_kwh",
+        "estimated_anomaly_energy_kwh",
+        "potentially_recoverable_energy_kwh",
+        "reconciled",
+        "tolerance_kwh",
+        "limitations"
+      ],
       "properties": {
-        "status": { "type": ["string", "null"] },
+        "status": { "type": "string", "enum": ["ok", "warning", "unavailable"] },
+        "reason": { "type": "string" },
+        "forecast_energy_kwh": { "type": ["number", "null"] },
+        "expected_energy_kwh": { "type": ["number", "null"] },
+        "actual_energy_kwh": { "type": ["number", "null"] },
         "weather_effect_kwh": { "type": ["number", "null"] },
         "plant_effect_kwh": { "type": ["number", "null"] },
         "total_deviation_kwh": { "type": ["number", "null"] },
-        "reconciled": { "type": "boolean" }
+        "observed_deviation_kwh": { "type": ["number", "null"] },
+        "estimated_anomaly_energy_kwh": { "type": ["number", "null"] },
+        "potentially_recoverable_energy_kwh": { "type": ["number", "null"] },
+        "reconciled": { "type": "boolean" },
+        "tolerance_kwh": { "type": "number", "minimum": 0 },
+        "limitations": { "type": "array", "items": { "type": "string" } }
       }
     },
-    "anomalies": { "type": "array" },
-    "hypotheses": { "type": "array" },
+    "anomalies": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/anomaly" }
+    },
+    "hypotheses": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/hypothesis" }
+    },
     "evidence": { "type": "array", "items": { "type": "string" } },
     "limitations": { "type": "array", "items": { "type": "string" } },
     "unresolved_fields": { "type": "array", "items": { "type": "string" } },
+    "missing_required_fields": { "type": "array", "items": { "type": "string" } },
+    "data_quality": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "valid", "rows", "checks", "counts", "sampling_interval_seconds", "limitations"],
+      "properties": {
+        "status": { "type": "string", "enum": ["pass", "warning", "fail"] },
+        "valid": { "type": "boolean" },
+        "rows": { "type": "integer", "minimum": 0 },
+        "checks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["check_id", "status", "count", "message", "affected_devices", "time_ranges", "details"],
+            "properties": {
+              "check_id": { "type": "string" },
+              "status": { "type": "string", "enum": ["pass", "warning", "fail", "not_checked"] },
+              "count": { "type": "integer", "minimum": 0 },
+              "message": { "type": "string" },
+              "affected_devices": { "type": "array", "items": { "type": "string" } },
+              "time_ranges": { "type": "array", "items": { "type": "object" } },
+              "details": { "type": "object" }
+            }
+          }
+        },
+        "counts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["checks", "fail", "warning", "pass", "not_checked"],
+          "properties": {
+            "checks": { "type": "integer", "minimum": 0 },
+            "fail": { "type": "integer", "minimum": 0 },
+            "warning": { "type": "integer", "minimum": 0 },
+            "pass": { "type": "integer", "minimum": 0 },
+            "not_checked": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "sampling_interval_seconds": { "type": ["number", "null"], "exclusiveMinimum": 0 },
+        "limitations": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "basic_validation",
+        "baseline",
+        "persistence",
+        "peer_comparison",
+        "trend_analysis",
+        "event_correlation",
+        "energy_waterfall"
+      ],
+      "properties": {
+        "basic_validation": { "$ref": "#/$defs/capability" },
+        "baseline": { "$ref": "#/$defs/capability" },
+        "persistence": { "$ref": "#/$defs/capability" },
+        "peer_comparison": { "$ref": "#/$defs/capability" },
+        "trend_analysis": { "$ref": "#/$defs/capability" },
+        "event_correlation": { "$ref": "#/$defs/capability" },
+        "energy_waterfall": { "$ref": "#/$defs/capability" }
+      }
+    },
+    "units": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["power", "energy", "irradiance", "temperature", "duration"],
+      "properties": {
+        "power": { "type": "string" },
+        "energy": { "type": "string" },
+        "irradiance": { "type": "string" },
+        "temperature": { "type": "string" },
+        "duration": { "type": "string" }
+      }
+    },
     "model_version": { "type": "string" },
     "mapping_version": { "type": "string" },
-    "status": { "type": ["string", "null"] },
-    "message": { "type": ["string", "null"] },
-    "metrics": { "type": "object" }
+    "config_version": { "type": "string" },
+    "vocab_version": { "type": "string" },
+    "method": { "type": "string", "enum": ["physics_baseline", "physics_plus_residual", "none"] },
+    "model_status": { "type": "string", "enum": ["physics_baseline_active", "residual_model_active", "not_available"] },
+    "errors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "message", "field", "details"],
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "INPUT_NOT_FOUND",
+              "UNSUPPORTED_FILE_TYPE",
+              "EMPTY_FILE",
+              "UNREADABLE_FILE",
+              "MISSING_OPERATING_DATA",
+              "AMBIGUOUS_INPUT_FILES",
+              "SHEET_NOT_FOUND",
+              "MISSING_REQUIRED_FIELDS",
+              "AMBIGUOUS_TIMESTAMP",
+              "INVALID_ARGUMENT",
+              "INTERNAL_ERROR"
+            ]
+          },
+          "message": { "type": "string" },
+          "field": { "type": ["string", "null"] },
+          "details": { "type": "object" }
+        }
+      }
+    }
   },
-  "additionalProperties": true
+  "$defs": {
+    "energy_component": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["value_kwh", "status", "source", "completeness", "aggregation_period", "unit", "reason"],
+      "properties": {
+        "value_kwh": { "type": ["number", "null"] },
+        "status": { "type": "string", "enum": ["available", "partial", "unavailable", "not_applicable"] },
+        "source": { "type": "string" },
+        "completeness": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+        "aggregation_period": { "type": "string" },
+        "unit": { "type": "string", "enum": ["kWh"] },
+        "reason": { "type": ["string", "null"] }
+      }
+    },
+    "capability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "reason"],
+      "properties": {
+        "status": { "type": "string", "enum": ["available", "unavailable", "not_applicable"] },
+        "reason": { "type": ["string", "null"] }
+      }
+    },
+    "anomaly": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["timestamp_utc", "device_id", "status", "checks", "message", "evidence", "missing_evidence"],
+      "properties": {
+        "timestamp_utc": { "type": ["string", "null"] },
+        "device_id": { "type": ["string", "null"] },
+        "status": { "type": "string", "enum": ["suspected", "confirmed"] },
+        "checks": { "type": "array", "items": { "type": "string" } },
+        "message": { "type": "string" },
+        "evidence": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "actual_power_kw",
+            "expected_power_kw",
+            "normalized_output",
+            "poa_irradiance_w_m2",
+            "peer_median",
+            "peer_mad",
+            "peer_z",
+            "peer_persistence",
+            "residual_shortfall",
+            "cusum_score"
+          ],
+          "properties": {
+            "actual_power_kw": { "type": ["number", "null"] },
+            "expected_power_kw": { "type": ["number", "null"] },
+            "normalized_output": { "type": ["number", "null"] },
+            "poa_irradiance_w_m2": { "type": ["number", "null"] },
+            "peer_median": { "type": ["number", "null"] },
+            "peer_mad": { "type": ["number", "null"] },
+            "peer_z": { "type": ["number", "null"] },
+            "peer_persistence": { "type": ["number", "null"] },
+            "residual_shortfall": { "type": ["number", "null"] },
+            "cusum_score": { "type": ["number", "null"] }
+          }
+        },
+        "missing_evidence": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "hypothesis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cause",
+        "label",
+        "status",
+        "root_cause_confirmed",
+        "event_confirmed",
+        "primary_allowed",
+        "confidence",
+        "interval",
+        "evidence",
+        "missing_evidence",
+        "source"
+      ],
+      "properties": {
+        "cause": { "type": "string" },
+        "label": { "type": "string" },
+        "status": { "type": "string", "enum": ["confirmed_event", "suspected", "unresolved"] },
+        "root_cause_confirmed": { "type": "boolean" },
+        "event_confirmed": { "type": "boolean" },
+        "primary_allowed": { "type": "boolean" },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "interval": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["timestamp_utc", "device_id"],
+          "properties": {
+            "timestamp_utc": { "type": ["string", "null"] },
+            "device_id": { "type": ["string", "null"] }
+          }
+        },
+        "evidence": { "type": "array", "items": { "type": "string" } },
+        "missing_evidence": { "type": "array", "items": { "type": "string" } },
+        "source": { "type": "string" }
+      }
+    }
+  }
 }

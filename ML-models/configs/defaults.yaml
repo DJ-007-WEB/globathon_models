@@ -60,7 +60,11 @@ mapping:
     - ambient_temperature
     - module_temperature
     - capacity
+    - dc_capacity
     - forecast
+    - forecast_energy
+    - forecast_power
+    - forecast_poa
   generic_ambiguous_headers:
     power: [power_ac, power_dc]
     active power: [power_ac, power_dc]
@@ -164,6 +168,22 @@ validation:
     longitude: null
   # Maximum number of example time ranges retained per check.
   max_example_ranges: 20
+
+# ---------------------------------------------------------------------------
+# Integration service boundary
+# ---------------------------------------------------------------------------
+integration:
+  # Snapshot mode is selected automatically when only one timestamp is present.
+  snapshot_max_timestamps: 1
+  # Cap attribution output so a large batch cannot emit an unbounded payload.
+  max_hypotheses: 500
+  # Forecast coverage below this fraction is reported as partial, not complete.
+  minimum_forecast_coverage: 0.95
+  # Event-log conflicts are reported when an outage/curtailment event overlaps
+  # an interval whose output is still close to the physics expectation.
+  event_conflict_output_ratio: 0.80
+  # Waterfall arithmetic tolerance.
+  waterfall_tolerance_kwh: 1.0e-6
 
 # ---------------------------------------------------------------------------
 # Reserved for later stages (not used by Stage 1)

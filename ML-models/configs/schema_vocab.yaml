@@ -48,6 +48,8 @@ roles:
     aliases:
       - poa
       - poa irradiance
+      - poa irradiance w m2
+      - poa irradiance wm2
       - gpoa
       - gti
       - front gpoa
@@ -67,6 +69,7 @@ roles:
     unit_family: irradiance
     aliases:
       - ghi
+      - ghi w m2
       - global horizontal
       - global horizontal irradiance
       - horizontal irradiance
@@ -81,6 +84,7 @@ roles:
     unit_family: temperature
     aliases:
       - ambient temperature
+      - ambient temperature c
       - ambient temp
       - amb temp
       - ambient temp.
@@ -101,6 +105,7 @@ roles:
     unit_family: temperature
     aliases:
       - module temperature
+      - module temperature c
       - module temp
       - mod temp
       - temp mod
@@ -122,6 +127,8 @@ roles:
     unit_family: power
     aliases:
       - ac power
+      - ac power kw
+      - power ac kw
       - ac output
       - active power
       - real power
@@ -139,6 +146,7 @@ roles:
     unit_family: power
     aliases:
       - dc power
+      - dc power kw
       - dc output
       - dc input
       - array power
@@ -154,6 +162,8 @@ roles:
     unit_family: energy
     aliases:
       - interval energy
+      - interval energy kwh
+      - energy kwh
       - energy interval
       - energy per interval
       - period energy
@@ -169,6 +179,7 @@ roles:
     unit_family: energy
     aliases:
       - cumulative energy
+      - cumulative energy kwh
       - total energy
       - total yield
       - lifetime energy
@@ -217,7 +228,10 @@ roles:
     unit_family: capacity
     aliases:
       - capacity
+      - capacity kw
       - rated capacity
+      - rated ac power kw
+      - ac capacity kw
       - installed capacity
       - nominal capacity
       - nameplate capacity
@@ -232,6 +246,103 @@ roles:
       - potencia nominal
       - puissance nominale
       - nennleistung
+
+  dc_capacity:
+    description: Rated DC / array capacity at standard test conditions.
+    unit_family: capacity
+    aliases:
+      - dc capacity
+      - rated dc power kw
+      - rated dc power
+      - dc capacity kw
+      - rated dc kw
+      - array capacity
+      - dc installed capacity
+
+  inverter_efficiency:
+    description: Inverter conversion efficiency as a fraction or percentage.
+    unit_family: null
+    aliases:
+      - inverter efficiency
+      - efficiency
+      - eta inverter
+      - conversion efficiency
+
+  system_losses:
+    description: Fraction of DC energy lost before the inverter.
+    unit_family: null
+    aliases:
+      - system losses fraction
+      - system losses
+      - losses fraction
+      - system loss
+      - soiling and mismatch losses
+
+  temperature_coefficient:
+    description: Module power temperature coefficient per degree Celsius.
+    unit_family: null
+    aliases:
+      - module temperature coefficient per c
+      - temperature coefficient per c
+      - temperature coefficient
+      - gamma
+      - power temperature coefficient
+
+  sun_elevation:
+    description: Solar elevation angle above the horizon.
+    unit_family: null
+    aliases:
+      - solar elevation deg
+      - solar elevation
+      - sun elevation deg
+      - sun elevation
+      - elevation angle
+
+  latitude:
+    description: Site latitude in decimal degrees.
+    unit_family: null
+    aliases:
+      - latitude deg
+      - latitude
+      - site latitude
+
+  longitude:
+    description: Site longitude in decimal degrees.
+    unit_family: null
+    aliases:
+      - longitude deg
+      - longitude
+      - site longitude
+
+  forecast_energy:
+    description: Forecast energy for one interval, not measured energy.
+    unit_family: energy
+    aliases:
+      - forecast energy kwh
+      - forecast energy
+      - forecasted energy
+      - predicted energy
+      - expected energy kwh
+
+  forecast_power:
+    description: Forecast AC power for one interval, not measured power.
+    unit_family: power
+    aliases:
+      - forecast ac power kw
+      - forecast power kw
+      - forecast ac power
+      - forecast power
+      - predicted power
+      - expected power kw
+
+  forecast_poa:
+    description: Forecast plane-of-array irradiance for one interval.
+    unit_family: irradiance
+    aliases:
+      - forecast poa irradiance w m2
+      - forecast poa irradiance
+      - forecast poa
+      - predicted irradiance
 
   availability_status:
     description: Operating / availability / communication state.

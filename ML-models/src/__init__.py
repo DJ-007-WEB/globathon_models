@@ -9,4 +9,5 @@ __all__ = [
     "synthetic",
     "counterfactual",
     "contract",
+    "service",
 ]

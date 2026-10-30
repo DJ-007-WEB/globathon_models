@@ -279,19 +279,26 @@ def _check_gaps(
     affected: set[str] = set()
     checked_groups = 0
     thresholds: list[float] = []
+    expected_values: list[float] = []
     for device, indexes in _iter_device_groups(frame, layout):
         timestamps = frame.loc[indexes, UTC_COLUMN].dropna().sort_values().reset_index(drop=True)
         if len(timestamps) < 3:
             continue
         checked_groups += 1
         diffs = timestamps.diff().dt.total_seconds().dropna()
+        positive = diffs[diffs > 0]
         group_expected = expected
         if group_expected is None or group_expected <= 0:
-            group_expected = float(diffs[diffs > 0].median()) if (diffs > 0).any() else None
+            group_expected = float(positive.median()) if not positive.empty else None
+        elif not positive.empty:
+            # A single large gap can inflate the median.  Use the smallest
+            # observed positive cadence so a missing interval remains visible.
+            group_expected = min(float(group_expected), float(positive.min()))
         if group_expected is None or group_expected <= 0:
             continue
         threshold = max(group_expected * factor, minimum)
         thresholds.append(threshold)
+        expected_values.append(float(group_expected))
         gap_mask = diffs > threshold
         local_count = int(gap_mask.sum())
         if not local_count:
@@ -328,7 +335,7 @@ def _check_gaps(
         affected_devices=sorted(affected) if affected else [],
         time_ranges=ranges,
         details={
-            "expected_interval_seconds": float(expected) if expected else None,
+            "expected_interval_seconds": min(expected_values) if expected_values else None,
             "threshold_seconds": threshold_value,
             "threshold_text": threshold_text,
             "maximum_gap_seconds": max_gap,

@@ -136,7 +136,8 @@ def test_quantity_names_are_not_mistaken_for_device_ids(tmp_path):
     mapping = map_table(table)
     fields = {field["source_column"]: field for field in mapping.fields}
     assert fields["inverter_id"]["canonical_role"] == "device_id"
-    assert fields["inverter_efficiency"]["unresolved"] is True
+    assert fields["inverter_efficiency"]["canonical_role"] == "inverter_efficiency"
+    assert fields["inverter_efficiency"]["canonical_role"] != "device_id"
 
 
 def test_wide_device_type_token_is_preserved(tmp_path):
