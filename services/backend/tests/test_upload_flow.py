@@ -1,6 +1,15 @@
 """Tests for ML-first orchestration and safe failure handling."""
 from fastapi.testclient import TestClient
+import pytest
 import main
+
+
+@pytest.fixture(autouse=True)
+def authenticated_test_request(monkeypatch):
+    # These tests exercise the upload/orchestration contract independently of JWT.
+    monkeypatch.setattr(main, "_authorize_browser", lambda authorization: {
+        "user_id": "test-user", "business_id": "test-business"
+    })
 
 
 VALID_ML = {
