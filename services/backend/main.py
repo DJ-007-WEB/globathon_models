@@ -480,13 +480,13 @@ async def list_analyses(limit: int = 20, offset: int = 0, plant_id: str | None =
     account = _authorize_browser(authorization)
     if limit < 1 or limit > 100 or offset < 0:
         raise HTTPException(status_code=422, detail="limit must be 1–100 and offset must be non-negative.")
-    db = _database_required()
     query = {"business_id": account["business_id"]}
     if plant_id is not None:
         plant_id = plant_id.strip()
         if not plant_id or len(plant_id) > 128:
             raise HTTPException(status_code=422, detail="plant_id must contain 1 to 128 characters.")
         query["plant_id"] = plant_id
+    db = _database_required()
     try:
         cursor = await run_in_threadpool(lambda: db.analyses.find(query, {"_id": 0, "result": 0}).sort("created_at", -1).skip(offset).limit(limit))
         items = await run_in_threadpool(lambda: list(cursor))
