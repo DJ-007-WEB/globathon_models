@@ -1,3 +1,5 @@
+import asyncio
+
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 import pytest
@@ -310,9 +312,9 @@ def test_plant_capacity_rejects_non_finite_values(monkeypatch):
     monkeypatch.setattr(main, "_authorize_browser", lambda authorization: {
         "user_id": "user-a", "business_id": "business-a"
     })
-    with TestClient(main.app) as client:
-        response = client.post("/api/v1/plants", json={
-            "plant_id": "plant-nan", "name": "Invalid Capacity",
-            "capacity_kw": float("nan")
-        })
-    assert response.status_code == 422
+    payload = main.PlantPayload(
+        plant_id="plant-nan", name="Invalid Capacity", capacity_kw=float("nan")
+    )
+    with pytest.raises(HTTPException) as invalid:
+        asyncio.run(main.create_plant(payload, authorization=None))
+    assert invalid.value.status_code == 422
