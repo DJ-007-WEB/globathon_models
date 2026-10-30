@@ -74,10 +74,28 @@ py -3.11 -m venv .venv-backend
 python -m pip install --upgrade pip
 pip install -r requirements.txt
 Copy-Item .env.example .env
+```
+
+Before starting the backend, edit `services/backend/.env` locally:
+
+- Set `MONGODB_URI` to your MongoDB Atlas connection string.
+- Keep `MONGODB_DATABASE=solarsleuth` unless you want another database name.
+- Set `JWT_SECRET` to a fresh random secret (at least 32 characters). Generate one with:
+
+```powershell
+py -c "import secrets; print(secrets.token_urlsafe(48))"
+```
+
+- Configure the same high-entropy `INTERNAL_SERVICE_TOKEN` in the backend, ML and LLM `.env` files.
+- Keep `MONGODB_URI`, `JWT_SECRET`, `API_ACCESS_TOKEN` and `INTERNAL_SERVICE_TOKEN` private. Never put them in frontend variables or commit local `.env` files.
+
+Then start the backend:
+
+```powershell
 python -m uvicorn main:app --host 127.0.0.1 --port 8001
 ```
 
-Configure the same high-entropy `INTERNAL_SERVICE_TOKEN` in all three service `.env` files for authenticated service-to-service calls. Keep `API_ACCESS_TOKEN` and `INTERNAL_SERVICE_TOKEN` private. Do not commit local `.env` files.
+The backend creates a unique email index in MongoDB. Registration stores a password hash and a separate business workspace ID for each account. Login returns a signed, expiring bearer token. The upload endpoint requires that token. If MongoDB is not configured in development, the backend still starts for health checks, but registration/login fail closed with HTTP 503.
 
 **Terminal 4 — frontend**
 
@@ -112,7 +130,7 @@ python -m pytest -q
 ## Existing limitations (not silently changed by integration)
 
 - The browser-facing upload contract accepts one operating-data CSV/XLSX file, up to the configured limit. Do not imply separate weather/device/forecast/event-log uploads are exposed.
-- The frontend's current sign-up/sign-in is browser-local demo authentication. It is not real identity, tenant isolation, or production authorization.
+- MongoDB-backed registration/login and JWT authorization are implemented on the integration branch. Analysis history is still held in the current browser session; persistent business-scoped report history is a subsequent step.
 - The backend has no grounded follow-up conversation endpoint yet. The existing AI explanation shown after an upload is not a general dataset-aware chatbot.
 - The trained model adapter is a local artifact and is not included in Git.
 - A successful CI run proves the relevant automated tests/build pass; it does not prove real-world model accuracy or full local GPU inference.
