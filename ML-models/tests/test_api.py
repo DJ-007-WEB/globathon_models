@@ -56,8 +56,8 @@ def test_upload_rejects_unsupported_file():
     [
         ("plant.xlsx", b"not-a-workbook", 415),
         ("plant.csv", b"not a delimited header", 422),
-        ("plant.csv", b"\\xff\\xfe", 415),
-        ("plant.csv", b"PK\\x03\\x04not-csv", 415),
+        ("plant.csv", bytes((0xFF, 0xFE)), 415),
+        ("plant.csv", bytes((0x50, 0x4B, 0x03, 0x04)) + b"not-csv", 415),
     ],
 )
 def test_upload_rejects_invalid_content(filename, content, expected_status):
