@@ -10,6 +10,9 @@ def authenticated_test_request(monkeypatch):
     monkeypatch.setattr(main, "_authorize_browser", lambda authorization: {
         "user_id": "test-user", "business_id": "test-business"
     })
+    async def skip_persistence(*args, **kwargs):
+        return None
+    monkeypatch.setattr(main, "_persist_analysis", skip_persistence)
 
 
 VALID_ML = {
