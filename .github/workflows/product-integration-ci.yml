@@ -1,4 +1,4 @@
-name: Product integration CI
+name: SolarSleuth product integration CI
 
 on:
   push:
@@ -12,11 +12,16 @@ permissions:
 jobs:
   frontend:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package.json
       - run: npm install
       - run: npm run build
 
@@ -24,14 +29,14 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: services/backend
+        working-directory: backend
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
           cache: pip
-          cache-dependency-path: services/backend/requirements.txt
+          cache-dependency-path: backend/requirements.txt
       - run: python -m pip install --upgrade pip
       - run: pip install -r requirements.txt pytest
       - run: python -m pytest -q
@@ -42,7 +47,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: services/llm
+        working-directory: llm-service
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -56,14 +61,14 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: services/ml
+        working-directory: ml-service
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
           cache: pip
-          cache-dependency-path: services/ml/requirements.txt
+          cache-dependency-path: ml-service/requirements.txt
       - run: python -m pip install --upgrade pip
       - run: python -m pip install -r requirements.txt
       - run: python -m pytest -q
