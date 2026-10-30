@@ -10,9 +10,16 @@ import asyncio
 import hmac
 import os
 import re
+from datetime import datetime, timedelta, timezone
 from contextlib import asynccontextmanager
 from pathlib import Path
 from uuid import uuid4
+
+import jwt
+from pwdlib import PasswordHash
+from pymongo import MongoClient
+from pymongo.errors import DuplicateKeyError, PyMongoError
+from starlette.concurrency import run_in_threadpool
 
 import httpx
 from dotenv import load_dotenv
@@ -32,6 +39,14 @@ MAX_CONCURRENT_ANALYSES = int(os.getenv("MAX_CONCURRENT_ANALYSES", "2"))
 ENVIRONMENT = os.getenv("ENVIRONMENT", "development").lower()
 SERVICE_TOKEN = os.getenv("INTERNAL_SERVICE_TOKEN")
 API_ACCESS_TOKEN = os.getenv("API_ACCESS_TOKEN")
+MONGODB_URI = os.getenv("MONGODB_URI", "").strip()
+MONGODB_DATABASE = os.getenv("MONGODB_DATABASE", "solarsleuth")
+JWT_SECRET = os.getenv("JWT_SECRET", "")
+JWT_ALGORITHM = "HS256"
+ACCESS_TOKEN_MINUTES = int(os.getenv("ACCESS_TOKEN_MINUTES", "720"))
+password_hasher = PasswordHash.recommended()
+mongo_client: MongoClient | None = None
+database = None
 CORS_ORIGINS = [x.strip() for x in os.getenv(
     "CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173"
 ).split(",") if x.strip()]
@@ -40,11 +55,28 @@ ANALYSIS_SLOTS = asyncio.Semaphore(max(1, MAX_CONCURRENT_ANALYSES))
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    if ENVIRONMENT == "production" and not API_ACCESS_TOKEN:
-        raise RuntimeError("API_ACCESS_TOKEN must be configured in production.")
+    global mongo_client, database
+    if ENVIRONMENT == "production" and not MONGODB_URI:
+        raise RuntimeError("MONGODB_URI must be configured in production.")
+    if ENVIRONMENT == "production" and (len(JWT_SECRET) < 32 or JWT_SECRET == "replace-with-a-long-random-secret"):
+        raise RuntimeError("Set JWT_SECRET to a random value of at least 32 characters.")
+    if MONGODB_URI:
+        try:
+            mongo_client = MongoClient(MONGODB_URI, serverSelectionTimeoutMS=5000, connectTimeoutMS=5000)
+            mongo_client.admin.command("ping")
+            database = mongo_client[MONGODB_DATABASE]
+            await run_in_threadpool(database.users.create_index, "email", unique=True)
+            await run_in_threadpool(database.analyses.create_index, [("business_id", 1), ("created_at", -1)])
+        except PyMongoError as exc:
+            if ENVIRONMENT == "production":
+                raise RuntimeError("MongoDB connection failed. Check MONGODB_URI and network access.") from exc
+            mongo_client = None
+            database = None
     if ENVIRONMENT == "production" and not SERVICE_TOKEN:
         raise RuntimeError("INTERNAL_SERVICE_TOKEN must be configured in production.")
     yield
+    if mongo_client is not None:
+        mongo_client.close()
 
 
 app = FastAPI(
@@ -62,19 +94,59 @@ app.add_middleware(
 )
 
 
-def _authorize_browser(authorization: str | None) -> None:
-    """Optional local-dev access; production requires a deployment access token.
+def _database_required():
+    if database is None:
+        raise HTTPException(status_code=503, detail="Account storage is not configured. Set MONGODB_URI in services/backend/.env.")
+    return database
 
-    This is a deployment gate, not multi-user identity or role-based access control.
-    """
-    if not API_ACCESS_TOKEN:
-        if ENVIRONMENT == "production":
-            raise HTTPException(status_code=503, detail="Browser API access is not configured.")
-        return
-    supplied = authorization.removeprefix("Bearer ").strip() if authorization else ""
-    if not authorization or not authorization.startswith("Bearer ") or not hmac.compare_digest(supplied, API_ACCESS_TOKEN):
-        raise HTTPException(status_code=401, detail="Authentication required.")
 
+def _issue_access_token(user: dict) -> str:
+    if len(JWT_SECRET) < 32:
+        raise HTTPException(status_code=503, detail="JWT_SECRET is not configured. Set a random secret of at least 32 characters.")
+    now = datetime.now(timezone.utc)
+    return jwt.encode(
+        {"sub": user["user_id"], "business_id": user["business_id"],
+         "email": user["email"], "iat": now,
+         "exp": now + timedelta(minutes=ACCESS_TOKEN_MINUTES)},
+        JWT_SECRET, algorithm=JWT_ALGORITHM,
+    )
+
+
+def _authorize_browser(authorization: str | None) -> dict:
+    """Validate a signed account token; legacy static token remains an optional deployment gate."""
+    if API_ACCESS_TOKEN:
+        supplied = authorization.removeprefix("Bearer ").strip() if authorization else ""
+        if authorization and authorization.startswith("Bearer ") and hmac.compare_digest(supplied, API_ACCESS_TOKEN):
+            return {"user_id": "legacy-deployment-user", "business_id": "legacy-deployment-workspace"}
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Sign in to access this workspace.")
+    if len(JWT_SECRET) < 32:
+        raise HTTPException(status_code=503, detail="Account authentication is not configured.")
+    try:
+        claims = jwt.decode(authorization[7:].strip(), JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        if not claims.get("sub") or not claims.get("business_id"):
+            raise ValueError("Required claims missing")
+        return {"user_id": claims["sub"], "business_id": claims["business_id"], "email": claims.get("email", "")}
+    except (jwt.InvalidTokenError, ValueError):
+        raise HTTPException(status_code=401, detail="Your session is invalid or expired. Please sign in again.")
+
+
+def _public_user(user: dict) -> dict:
+    return {"user_id": user["user_id"], "name": user["name"], "email": user["email"],
+            "business_id": user["business_id"], "business_name": user["business_name"]}
+
+
+from pydantic import BaseModel
+
+
+class AuthPayload(BaseModel):
+    email: str
+    password: str
+
+
+class RegisterPayload(AuthPayload):
+    name: str
+    business_name: str
 
 def _internal_headers() -> dict[str, str]:
     if SERVICE_TOKEN:
@@ -210,6 +282,61 @@ async def _post_llm(payload: dict) -> dict:
     return value
 
 
+@app.post("/api/v1/auth/register")
+async def register_account(payload: RegisterPayload) -> dict:
+    db = _database_required()
+    email = payload.email.strip().lower()
+    name = payload.name.strip()
+    business_name = payload.business_name.strip()
+    if not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]{2,}", email) or len(email) > 254:
+        raise HTTPException(status_code=422, detail="Enter a valid email address.")
+    if len(name) < 2 or len(name) > 100:
+        raise HTTPException(status_code=422, detail="Name must contain 2 to 100 characters.")
+    if len(business_name) < 2 or len(business_name) > 120:
+        raise HTTPException(status_code=422, detail="Business name must contain 2 to 120 characters.")
+    if len(payload.password) < 10 or len(payload.password) > 128:
+        raise HTTPException(status_code=422, detail="Password must contain 10 to 128 characters.")
+    user = {"user_id": str(uuid4()), "business_id": str(uuid4()), "name": name,
+            "email": email, "business_name": business_name,
+            "password_hash": password_hasher.hash(payload.password),
+            "created_at": datetime.now(timezone.utc)}
+    try:
+        await run_in_threadpool(db.users.insert_one, user)
+    except DuplicateKeyError:
+        raise HTTPException(status_code=409, detail="An account with this email already exists.")
+    except PyMongoError:
+        raise HTTPException(status_code=503, detail="Account storage is temporarily unavailable.")
+    return {"access_token": _issue_access_token(user), "token_type": "bearer",
+            "expires_in": ACCESS_TOKEN_MINUTES * 60, "user": _public_user(user)}
+
+
+@app.post("/api/v1/auth/login")
+async def login_account(payload: AuthPayload) -> dict:
+    db = _database_required()
+    email = payload.email.strip().lower()
+    try:
+        user = await run_in_threadpool(db.users.find_one, {"email": email})
+    except PyMongoError:
+        raise HTTPException(status_code=503, detail="Account storage is temporarily unavailable.")
+    if not user or not password_hasher.verify(payload.password, user["password_hash"]):
+        raise HTTPException(status_code=401, detail="Incorrect email or password.")
+    return {"access_token": _issue_access_token(user), "token_type": "bearer",
+            "expires_in": ACCESS_TOKEN_MINUTES * 60, "user": _public_user(user)}
+
+
+@app.get("/api/v1/auth/me")
+async def current_account(authorization: str | None = Header(None, alias="Authorization")) -> dict:
+    claims = _authorize_browser(authorization)
+    if claims["user_id"] == "legacy-deployment-user":
+        return {"user_id": claims["user_id"], "business_id": claims["business_id"],
+                "name": "Deployment user", "email": "", "business_name": "Legacy workspace"}
+    db = _database_required()
+    user = await run_in_threadpool(db.users.find_one, {"user_id": claims["user_id"], "business_id": claims["business_id"]})
+    if not user:
+        raise HTTPException(status_code=401, detail="Account no longer exists.")
+    return _public_user(user)
+
+
 @app.get("/health")
 async def health() -> dict:
     return {"status": "ok", "service": "solarsleuth-application-backend"}
@@ -244,7 +371,7 @@ async def analyze_upload(
     sheet_name: str | None = Form(None),
     authorization: str | None = Header(None, alias="Authorization"),
 ) -> AnalyzeResponse:
-    _authorize_browser(authorization)
+    account = _authorize_browser(authorization)
     request_id = str(uuid4())
     filename = _safe_filename(file.filename)
     if Path(filename).suffix.lower() not in {".csv", ".xlsx"}:
