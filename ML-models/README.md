@@ -1,35 +1,64 @@
 # SolarSleuth Deterministic ML Service
 
-The ML branch owns all deterministic data calculations. The application backend calls this service before it calls the local LLM.
+The ML branch owns all deterministic data calculations. The application backend calls this service first and forwards only bounded, validated ML evidence to the local LLM.
 
 ## HTTP service (port 8002)
 
-From the repository's `ML-models` directory:
+Run these commands from the repository's `ML-models` directory in PowerShell:
 
 ```powershell
-python -m venv .venv-ml
+py -3.11 -m venv .venv-ml
 .\.venv-ml\Scripts\Activate.ps1
+python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 Copy-Item .env.example .env
-python -m uvicorn api:app --host 127.0.0.1 --port 8002
+python -m uvicorn api:app --host 127.0.0.1 --port 8002 --reload
 ```
 
-The API exposes `GET /health`, `GET /ready`, and `POST /api/v1/analyze` (multipart upload). The upload endpoint accepts one CSV or XLSX operating-data file, plus `plant_id`, `mode`, optional IANA `timezone`, `interval_minutes`, and `sheet_name`. Maximum upload size is 25 MiB by default.
+The API exposes:
 
-Set `INTERNAL_SERVICE_TOKEN` to the same value configured in the backend and AI-model services. In development, an unset token is allowed. Set `ENVIRONMENT=production` to require a configured token. This is service-to-service authentication, not user authentication.
+- `GET /health` — process liveness.
+- `GET /ready` — whether the deterministic pipeline is importable.
+- `POST /api/v1/analyze` — multipart upload of one CSV or XLSX operating-data file.
 
-The endpoint writes the upload to a random temporary file, calls the existing `src.pipeline.run_pipeline` boundary, and removes the temporary file. It does not alter the ML algorithms. The versioned contract-v2 result is returned unchanged.
+The upload endpoint accepts `file`, `plant_id`, `mode` (`auto`, `snapshot`, or `full`), optional IANA `timezone`, positive `interval_minutes`, and optional Excel `sheet_name`. The default upload limit is 25 MiB and the default concurrent-analysis limit is 2. The service performs a bounded read, basic content/signature checks, safe temporary-file handling, and guaranteed temporary-file cleanup. Unexpected parser/pipeline exceptions are returned as a generic error; internal paths and stack traces are not exposed.
 
-## Scope of the HTTP adapter
+## Backend connection
 
-The Python pipeline can accept a scenario directory or a mapping containing operating, weather, device, forecast, event-log and metadata inputs. The current HTTP adapter deliberately accepts only one operating-data CSV/XLSX file. Multi-file upload roles are not exposed over HTTP yet; missing context must remain unavailable rather than being fabricated.
+The application backend runs on port 8001 and calls:
 
-## Responsibilities
+```text
+POST http://127.0.0.1:8002/api/v1/analyze
+X-Service-Token: <shared INTERNAL_SERVICE_TOKEN>
+Content-Type: multipart/form-data
+```
 
-Ingestion, adaptive schema mapping, data validation, physics baseline, anomaly detection, evidence-based attribution and energy waterfall calculations remain in this branch. The LLM is not used for arithmetic, and synthetic benchmarks must not be represented as real-world accuracy.
+Set the same `INTERNAL_SERVICE_TOKEN` in the backend, ML service, and AI-model service when using service authentication. In local development the token may remain blank. In production set `ENVIRONMENT=production` and configure a high-entropy token in all services. This token authenticates service-to-service calls; it is not end-user authentication.
 
-Run the existing tests from this directory:
+## Deterministic pipeline
+
+The HTTP adapter calls the existing `src.pipeline.run_pipeline` compatibility boundary, which delegates to `src.service.analyze`. The analysis stages are:
+
+1. CSV/XLSX ingestion, header and timestamp discovery.
+2. Auditable schema/alias mapping and explicit unit conversion.
+3. Data-quality validation (missing values, duplicates, timestamp order/gaps, physical plausibility and related checks).
+4. Device/weather context merge where available.
+5. Deterministic physics-based expected power and energy baseline.
+6. Anomaly detection with evidence and capability limitations.
+7. Evidence-based attribution hypotheses (not unsupported root-cause claims).
+8. Forecast/expected/actual energy comparison and reconciled waterfall.
+9. Strict contract-v2 validation and JSON-safe serialization.
+
+Numerical authority stays in ML. Missing values remain null; forecast, expected and actual energy are independent; power-to-energy conversion uses the measured timestamp interval; ambiguous units are not guessed. The LLM is not used for arithmetic.
+
+The current HTTP adapter deliberately accepts only one operating-data file. Although the Python pipeline can consume role-labelled scenario directories/mappings, multi-file weather/device/forecast/event-log inputs are not yet exposed through this route. Do not claim multi-file HTTP ingestion until the API and backend both implement it.
+
+## Install and test
 
 ```powershell
 python -m pytest -q
 ```
+
+The suite covers the deterministic pipeline, contract, schema mapping, validation, energy calculations, anomalies, attribution, upload validation, authentication, bounded uploads and temporary-file cleanup. GitHub Actions runs the same test suite on pushes and pull requests to `ML_models`.
+
+Synthetic benchmark results are not real-world accuracy claims. The active expected-energy method is the documented physics baseline; LightGBM is not used as a trained production model.
