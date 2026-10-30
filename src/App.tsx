@@ -12,6 +12,7 @@ type Analysis = {
 type MlAnalysis = Record<string, any>;
 type ApiResult = { request_id?: string | null; plant_id?: string; model?: string; analysis: Analysis; ml_analysis?: MlAnalysis | null; analysis_mode?: string | null };
 type Turn = { id: string; question: string; createdAt: number; result?: ApiResult; error?: string; loading?: boolean };
+type ChatMessage = { role: "user" | "assistant"; content: string | Analysis; created_at?: string };
 async function loadStoredAnalyses(base: string, token: string): Promise<Turn[]> {
   const headers = { Authorization: "Bearer " + token };
   let response: Response;
@@ -179,6 +180,10 @@ export default function App() {
   const [serviceChecks, setServiceChecks] = useState({ml:false,llm:false,model:false});
   const [turns, setTurns] = useState<Turn[]>([]);
   const [selectedTurnId, setSelectedTurnId] = useState("");
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatInput, setChatInput] = useState("");
+  const [chatBusy, setChatBusy] = useState(false);
+  const [chatError, setChatError] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [customApi, setCustomApi] = useState(getApiBase);
@@ -205,6 +210,19 @@ export default function App() {
     } catch {}
   }, []);
   useEffect(() => { document.documentElement.dataset.theme=theme; try{localStorage.setItem("solarsleuth_theme",theme)}catch{} },[theme]);
+  useEffect(() => {
+    if (!accessToken || !selectedTurnId) { setChatMessages([]); return; }
+    let active = true;
+    fetch(apiBase + "/api/v1/analyses/" + encodeURIComponent(selectedTurnId) + "/chat", {
+      headers: { Authorization: "Bearer " + accessToken }, signal: AbortSignal.timeout(15000)
+    }).then(async response => {
+      if (!response.ok) throw new Error("Conversation history is unavailable for this report.");
+      return response.json();
+    }).then(data => { if (active) setChatMessages(Array.isArray(data.messages) ? data.messages : []); })
+      .catch(() => { if (active) setChatMessages([]); });
+    return () => { active = false; };
+  }, [apiBase, accessToken, selectedTurnId]);
+
   const checkReady = useCallback(async () => {
     try { const r=await fetch(apiBase+"/ready",{signal:AbortSignal.timeout(8000)}); const j=await r.json(); const checks={ml:Boolean(j.ml_service_reachable),llm:Boolean(j.llm_api_reachable),model:Boolean(j.model_loaded)}; setServiceChecks(checks); setReady(r.ok&&checks.ml&&checks.llm?(checks.model?"ready":"warming"):"offline"); }
     catch { setServiceChecks({ml:false,llm:false,model:false}); setReady("offline"); }
@@ -278,6 +296,26 @@ export default function App() {
       setTurns(old=>old.map(t=>t.id===id?{...t,loading:false,error:msg}:t));setError(msg);
     }finally{setBusy(false);}
   };
+
+  const sendFollowUp = async (e: FormEvent) => {
+    e.preventDefault();
+    const question = chatInput.trim();
+    if (!latestTurn?.result?.request_id || !question || chatBusy) return;
+    setChatBusy(true); setChatError("");
+    try {
+      const response = await fetch(apiBase + "/api/v1/analyses/" + encodeURIComponent(latestTurn.result.request_id) + "/chat", {
+        method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + accessToken },
+        body: JSON.stringify({ question }), signal: AbortSignal.timeout(240000)
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "The follow-up request could not be completed.");
+      setChatMessages(old => [...old, { role: "user", content: question },
+        { role: "assistant", content: data.answer }]);
+      setChatInput("");
+    } catch (err) {
+      setChatError(err instanceof Error ? err.message : "Unable to send the follow-up question.");
+    } finally { setChatBusy(false); }
+  };
   const statusText=ready==="ready"?"ML + local AI ready":ready==="warming"?"ML connected · local AI model warming up":ready==="checking"?"Checking backend, ML and AI services":"Backend or a dependent service unavailable";
   const nav=[{id:"overview" as const,label:"Overview",icon:"◫"},{id:"data" as const,label:"Upload & analyse",icon:"⇧"},{id:"validation" as const,label:"Validation Lab",icon:"✓"},{id:"report" as const,label:"Reports",icon:"▤"},{id:"assistant" as const,label:"AI explanation",icon:"✳"}];
   const latestTurn = turns.find(t=>t.id===selectedTurnId && t.result) || turns.filter(t=>t.result).slice(-1)[0];
@@ -300,7 +338,13 @@ export default function App() {
 <div className="field-card"><label htmlFor="plantId">Plant identifier (optional)</label><input id="plantId" value={plantId} maxLength={128} onChange={e=>setPlantId(e.target.value)} placeholder="Enter a plant identifier"/><small>Used as report metadata; measurements always come from the uploaded file.</small></div><div className="field-card"><label htmlFor="uploadMode">Analysis mode</label><select id="uploadMode" value={uploadMode} onChange={e=>setUploadMode(e.target.value)}><option value="auto">Automatic</option><option value="snapshot">Snapshot</option><option value="full">Full time-series</option></select></div><div className="field-card"><label htmlFor="uploadTimezone">IANA timezone (optional)</label><input id="uploadTimezone" value={uploadTimezone} onChange={e=>setUploadTimezone(e.target.value)} placeholder="Asia/Kolkata"/></div><div className="field-card"><label htmlFor="uploadInterval">Interval minutes (optional)</label><input id="uploadInterval" type="number" min="0.01" step="any" value={uploadInterval} onChange={e=>setUploadInterval(e.target.value)} placeholder="Auto-detect"/></div><div className="field-card"><label htmlFor="uploadSheet">Excel sheet name (optional)</label><input id="uploadSheet" value={uploadSheet} onChange={e=>setUploadSheet(e.target.value)} placeholder="First sheet by default"/></div><div style={{gridColumn:"1 / -1"}}><button className="primary-action" type="submit" disabled={busy||!datasetFile}>{busy?<><span className="inline-spinner" aria-hidden="true"/> Analysing dataset…</>:"Upload and analyse ↗"}</button>{error&&<div className="inline-error" role="alert">{error}</div>}{uploadStage==="running"&&<p className="pipeline-status" role="status">Your file has been sent to the backend. Validation, deterministic ML analysis and local AI explanation are running in sequence.</p>}{uploadStage==="complete"&&<p className="pipeline-status success" role="status">Analysis completed. Review the ML evidence and AI explanation.</p>}{uploadStage==="failed"&&<p className="pipeline-status failed" role="status">The analysis could not be completed. Review the error above and retry when the services are ready.</p>}</div></form><p className="inline-note" style={{marginTop:14}}>The current HTTP integration accepts one operating-data file. The ML Python pipeline supports additional context inputs, but multi-file weather/device/forecast/event-log upload is not yet exposed here.</p><p className="inline-note">SolarSleuth is file-first: plant readings are never entered manually in the application.</p></div>}
       {page==="validation"&&(latestTurn?.result?.ml_analysis ? <ValidationLab result={latestTurn.result} datasetName={latestTurn.question.replace("Dataset analysis: ","")}/> : <div className="analysis-card analysis-empty"><div className="empty-icon">✓</div><h3>No analysis to validate yet</h3><p>Upload a CSV or Excel workbook first. The Validation Lab will show the data-quality checks and evidence returned by the deterministic ML service.</p><button className="primary-action" onClick={()=>setPage("data")}>Upload plant data ↗</button></div>)}
       {page==="report"&&<div className="analysis-card report"><div className="analysis-topline noprint"><div><div className="eyebrow">REPORT</div><h2>Latest analysis report</h2><p className="analysis-meta">Generated from the latest successful uploaded-dataset analysis.</p></div><button className="small-action" onClick={()=>window.print()} disabled={!turns.some(t=>t.result)}>Print / Save PDF</button></div>{turns.filter(t=>t.result).map(t=><button key={t.id} type="button" className="small-action" style={{margin:"0 8px 12px 0"}} onClick={()=>setSelectedTurnId(t.id)}>{t.question.replace("Dataset analysis: ","")} · {new Date(t.createdAt).toLocaleDateString()}</button>)}{turns.filter(t=>t.result&&t.id===latestTurn?.id).map(t=><div key={t.id} className="report-content"><div className="report-heading"><div className="eyebrow">SOLARSLEUTH · SOLAR PERFORMANCE INTELLIGENCE</div><h1>Plant performance analysis</h1><p>Dataset: {t.question.replace("Dataset analysis: ","")}</p><p>Generated: {new Date(t.createdAt).toLocaleString()}</p><p>Plant: {t.result!.plant_id || "Not specified"} · Mode: {t.result!.analysis_mode || "Not specified"}</p><p>Request ID: {t.result!.request_id || "Not provided"}</p></div><h3>Executive analysis</h3><AnalysisResponse result={t.result!}/></div>)}{!turns.some(t=>t.result)&&<div className="analysis-empty"><p>No successful analysis is available yet.</p><button className="primary-action" onClick={()=>setPage("data")}>Run an analysis ↗</button></div>}</div>}
-      {page==="assistant"&&<><div className="analysis-card"><div className="analysis-topline"><div><div className="eyebrow">LOCAL MODEL · QWEN</div><h2>AI explanation</h2><p className="analysis-meta">Detailed explanations are generated from the deterministic ML result returned by your uploaded dataset.</p></div><span className="analysis-meta">Saved workspace history</span></div><p className="analysis-meta">The browser sends files only to the application backend. Follow-up chat is not enabled until the backend exposes a dataset-grounded conversation endpoint.</p>{uploadStage==="running"&&<div className="pipeline-status" role="status"><span className="inline-spinner" aria-hidden="true"/> Processing upload → deterministic ML analysis → local AI explanation. Keep the services running.</div>}{uploadStage==="complete"&&<div className="pipeline-status success" role="status">Analysis completed successfully. The ML result and AI explanation are shown below.</div>}{uploadStage==="failed"&&<div className="pipeline-status failed" role="status">Analysis failed. See the message in the latest request below, then retry from Upload & analyse.</div>}</div><div className="assistant-history" style={{marginTop:18}}>{turns.length===0&&<div className="analysis-card analysis-empty"><div className="empty-icon">✳</div><h3>No analysis yet</h3><p>Upload a plant dataset to generate its deterministic analysis and local AI explanation.</p><button className="primary-action" onClick={()=>setPage("data")}>Upload a dataset ↗</button></div>}{turns.map(t=><div className="assistant-turn" key={t.id}><div className="user-question">{t.question}</div><div className="assistant-label"><span className="chat-avatar">✳</span>SolarSleuth · local AI</div>{t.loading?<div className="assistant-response"><p>Your upload is being processed by the backend. The deterministic ML service runs first, followed by the local AI explanation.</p><div className="loader" style={{marginTop:12}}/></div>:t.error?<div className="inline-error">{t.error}</div>:t.result?<AnalysisResponse result={t.result}/>:null}</div>)}</div></>}
+      {page==="assistant"&&<><div className="analysis-card"><div className="analysis-topline"><div><div className="eyebrow">LOCAL MODEL · QWEN</div><h2>AI explanation</h2><p className="analysis-meta">Detailed explanations are generated from the deterministic ML result returned by your uploaded dataset.</p></div><span className="analysis-meta">Saved workspace history</span></div><p className="analysis-meta">Ask questions about the selected saved report. Answers use its deterministic ML evidence; numerical results remain unchanged.</p>
+      {turns.filter(t=>t.result).length>0&&<div className="field-card" style={{marginTop:14}}><label htmlFor="chatReport">Report in context</label><select id="chatReport" value={latestTurn?.id||""} onChange={e=>setSelectedTurnId(e.target.value)}>{turns.filter(t=>t.result).map(t=><option key={t.id} value={t.id}>{t.question.replace("Dataset analysis: ","")} · {new Date(t.createdAt).toLocaleDateString()}</option>)}</select></div>}{uploadStage==="running"&&<div className="pipeline-status" role="status"><span className="inline-spinner" aria-hidden="true"/> Processing upload → deterministic ML analysis → local AI explanation. Keep the services running.</div>}{uploadStage==="complete"&&<div className="pipeline-status success" role="status">Analysis completed successfully. The ML result and AI explanation are shown below.</div>}{uploadStage==="failed"&&<div className="pipeline-status failed" role="status">Analysis failed. See the message in the latest request below, then retry from Upload & analyse.</div>}</div><div className="assistant-history" style={{marginTop:18}}>
+      {!latestTurn?.result&&<div className="analysis-card analysis-empty"><div className="empty-icon">✳</div><h3>No saved analysis selected</h3><p>Upload a plant dataset or select a saved report to ask evidence-based follow-up questions.</p><button className="primary-action" onClick={()=>setPage("data")}>Upload a dataset ↗</button></div>}
+      {latestTurn?.result&&<div className="assistant-turn"><div className="user-question">{latestTurn.question}</div><div className="assistant-label"><span className="chat-avatar">✳</span>SolarSleuth · original analysis</div><AnalysisResponse result={latestTurn.result}/></div>}
+      {chatMessages.map((message,index)=><div className="assistant-turn" key={message.created_at||index}><div className={message.role==="user"?"user-question":"assistant-label"}>{message.role==="user"?"You":<><span className="chat-avatar">✳</span>SolarSleuth · grounded follow-up</>}</div>{message.role==="assistant"&&typeof message.content!=="string"?<AnalysisResponse result={{analysis:message.content as Analysis,plant_id:latestTurn?.result?.plant_id}}/>:<div className="assistant-response"><p>{typeof message.content==="string"?message.content:JSON.stringify(message.content)}</p></div>}</div>)}
+      {latestTurn?.result&&<form className="field-grid" onSubmit={sendFollowUp} style={{marginTop:18}}><div className="field-card" style={{gridColumn:"1 / -1"}}><label htmlFor="followUpQuestion">Ask about this analysis</label><textarea id="followUpQuestion" rows={3} maxLength={2000} value={chatInput} onChange={e=>setChatInput(e.target.value)} placeholder="e.g. Which evidence supports the possible soiling explanation?" disabled={chatBusy}/><small>Up to 2,000 characters. The assistant can only use evidence in this saved report and recent conversation.</small></div><div style={{gridColumn:"1 / -1"}}><button className="primary-action" type="submit" disabled={chatBusy||!chatInput.trim()}>{chatBusy?"Thinking…":"Ask follow-up ↗"}</button>{chatError&&<div className="inline-error" role="alert">{chatError}</div>}</div></form>}
+    </div></>}
       </main></div><footer className="app-footer">SolarSleuth is a prototype. Confirm model hypotheses against real telemetry and qualified operator checks. Account access uses expiring backend-issued tokens.</footer>
     </>}
   </>;
