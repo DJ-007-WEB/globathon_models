@@ -42,6 +42,19 @@ function MlAnalysisResponse({ result }: { result: MlAnalysis }) {
     <div className="eyebrow">DETERMINISTIC ML · {String(result.analysis_status||"unknown").toUpperCase()}</div>
     <h3>Calculated plant analysis</h3>
     <p>{result.summary || "The ML service returned a structured analysis."}</p>
+    <div className="dataset-profile">
+      <div className="dataset-profile-head"><h4>Dataset profile</h4><span>{result.schema_version ? `Contract v${result.schema_version}` : "ML metadata"}</span></div>
+      <div className="dataset-facts">
+        <div><small>Rows analysed</small><strong>{result.interval?.row_count ?? result.data_quality?.rows ?? "Not reported"}</strong></div>
+        <div><small>Sampling interval</small><strong>{typeof result.interval?.sampling_interval_seconds === "number" ? `${result.interval.sampling_interval_seconds} sec` : "Not reported"}</strong></div>
+        <div><small>Timezone</small><strong>{result.interval?.timezone || result.request?.timezone || "Not resolved"}</strong></div>
+        <div><small>Devices</small><strong>{result.interval?.device_count ?? "Not reported"}</strong></div>
+      </div>
+      {(result.interval?.start_utc || result.interval?.end_utc) && <p className="inline-note">Coverage: {result.interval?.start_utc || "Start unavailable"} — {result.interval?.end_utc || "End unavailable"}</p>}
+      {result.units && <div className="unit-list"><strong>Units reported by ML</strong>{Object.entries(result.units).map(([key,value])=><span key={key}><small>{pretty(key)}</small><b>{String(value)}</b></span>)}</div>}
+      {(result.mapping_version || result.vocab_version) && <p className="inline-note">Schema mapping version: {result.mapping_version || "Not reported"} · Vocabulary version: {result.vocab_version || "Not reported"}</p>}
+      {Array.isArray(result.request?.source_files) && result.request.source_files.length>0 && <p className="inline-note">Source files: {result.request.source_files.map((name:string)=>String(name)).join(", ")}</p>}
+    </div>
     <div className="metric-grid">
       <div className="metric-card"><span>Forecast energy</span><strong>{fmt(energy.forecast?.value_kwh ?? result.forecast_energy)}</strong></div>
       <div className="metric-card"><span>Expected energy</span><strong>{fmt(energy.expected?.value_kwh ?? result.expected_energy)}</strong></div>
@@ -55,6 +68,7 @@ function MlAnalysisResponse({ result }: { result: MlAnalysis }) {
     {result.data_quality&&<div className="analysis-section"><h3>Data quality · {String(result.data_quality.status||"not reported")}</h3><p>{result.data_quality.rows??"—"} rows inspected · {result.data_quality.counts?.warning??0} warnings · {result.data_quality.counts?.fail??0} failures</p></div>}
     {Array.isArray(result.unresolved_fields)&&result.unresolved_fields.length>0&&<div className="analysis-section"><h3>Unresolved fields</h3><ul>{result.unresolved_fields.slice(0,30).map((x:any,i:number)=><li key={i}>{String(x)}</li>)}</ul></div>}
     {limitations.length>0&&<div className="analysis-section"><h3>ML limitations</h3><ul>{limitations.slice(0,20).map((x:any,i:number)=><li key={i}>{String(x)}</li>)}</ul></div>}
+    {Array.isArray(result.data_quality?.checks)&&result.data_quality.checks.length>0&&<div className="analysis-section"><h3>Validation checks</h3><ul>{result.data_quality.checks.slice(0,30).map((check:any,i:number)=><li key={check.check_id||i}><strong>{pretty(String(check.status||"not reported"))}:</strong> {String(check.message||check.check_id||"Validation check")} {typeof check.count==="number"?`(${check.count})`:""}</li>)}</ul></div>}
     <p className="inline-note">Numerical values and anomaly calculations originate from the deterministic ML service. The LLM explanation follows below.</p>
   </section>;
 }
