@@ -62,7 +62,7 @@ def ready() -> dict:
     adapter_exists = bool(service and service.adapter_path.is_dir()
                            and (service.adapter_path / "adapter_config.json").is_file())
     return {
-        "status": "ready" if loaded else "not_loaded",
+        "status": "ready" if loaded else ("not_ready" if service and service.last_load_error else "not_loaded"),
         "service": "solarsleuth-local-llm",
         "model_loaded": loaded,
         "adapter_available": adapter_exists,
@@ -81,12 +81,13 @@ async def analyze(
     try:
         analysis: AnalysisResponse = await run_in_threadpool(service.analyze, request)
     except FileNotFoundError as exc:
-        service.last_load_error = str(exc)
+        service.last_load_error = "Configured model or LoRA adapter could not be loaded."
         raise HTTPException(
             status_code=503,
             detail="Configured local model or LoRA adapter files are unavailable. Check ADAPTER_PATH and adapter metadata.",
         ) from exc
     except (ValueError, RuntimeError) as exc:
+        service.last_load_error = "Configured model or LoRA adapter could not be loaded."
         raise HTTPException(status_code=503, detail="Local model inference could not produce a valid explanation.") from exc
     return AnalyzeResponse(
         request_id=request.request_id,
