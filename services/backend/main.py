@@ -67,6 +67,7 @@ async def lifespan(app: FastAPI):
             database = mongo_client[MONGODB_DATABASE]
             await run_in_threadpool(database.users.create_index, "email", unique=True)
             await run_in_threadpool(database.analyses.create_index, [("business_id", 1), ("created_at", -1)])
+            await run_in_threadpool(database.analyses.create_index, [("business_id", 1), ("request_id", 1)], unique=True)
         except PyMongoError as exc:
             if ENVIRONMENT == "production":
                 raise RuntimeError("MongoDB connection failed. Check MONGODB_URI and network access.") from exc
@@ -339,6 +340,67 @@ async def current_account(authorization: str | None = Header(None, alias="Author
     return _public_user(user)
 
 
+
+def _analysis_document(account: dict, filename: str, plant_id: str, result: AnalyzeResponse) -> dict:
+    """Build a metadata-only record; uploaded file bytes are never persisted."""
+    return {"request_id": result.request_id, "user_id": account["user_id"],
+            "business_id": account["business_id"], "plant_id": plant_id,
+            "filename": filename, "analysis_status": (result.ml_analysis or {}).get("analysis_status", "unknown"),
+            "analysis_mode": result.analysis_mode, "created_at": datetime.now(timezone.utc),
+            "result": result.model_dump(mode="json")}
+
+
+async def _persist_analysis(account: dict, filename: str, plant_id: str, result: AnalyzeResponse) -> None:
+    if database is None:
+        if account.get("user_id") == "legacy-deployment-user":
+            return
+        _database_required()
+    try:
+        await run_in_threadpool(database.analyses.insert_one, _analysis_document(account, filename, plant_id, result))
+    except PyMongoError as exc:
+        raise HTTPException(status_code=503, detail="Analysis completed but could not be saved. Check database connectivity and retry.") from exc
+
+
+def _public_analysis_summary(document: dict) -> dict:
+    created = document.get("created_at")
+    return {"request_id": document["request_id"], "plant_id": document.get("plant_id", "unknown-plant"),
+            "filename": document.get("filename", "dataset"), "analysis_status": document.get("analysis_status", "unknown"),
+            "analysis_mode": document.get("analysis_mode"),
+            "created_at": created.isoformat() if isinstance(created, datetime) else created}
+
+
+@app.get("/api/v1/analyses")
+async def list_analyses(limit: int = 20, offset: int = 0,
+                        authorization: str | None = Header(None, alias="Authorization")) -> dict:
+    account = _authorize_browser(authorization)
+    if limit < 1 or limit > 100 or offset < 0:
+        raise HTTPException(status_code=422, detail="limit must be 1–100 and offset must be non-negative.")
+    db = _database_required()
+    query = {"business_id": account["business_id"]}
+    try:
+        cursor = await run_in_threadpool(lambda: db.analyses.find(query, {"_id": 0, "result": 0}).sort("created_at", -1).skip(offset).limit(limit))
+        items = await run_in_threadpool(lambda: list(cursor))
+        total = await run_in_threadpool(db.analyses.count_documents, query)
+    except PyMongoError as exc:
+        raise HTTPException(status_code=503, detail="Analysis history is temporarily unavailable.") from exc
+    return {"items": [_public_analysis_summary(item) for item in items], "total": total, "limit": limit, "offset": offset}
+
+
+@app.get("/api/v1/analyses/{request_id}")
+async def get_analysis(request_id: str,
+                       authorization: str | None = Header(None, alias="Authorization")) -> dict:
+    account = _authorize_browser(authorization)
+    db = _database_required()
+    try:
+        document = await run_in_threadpool(db.analyses.find_one,
+            {"business_id": account["business_id"], "request_id": request_id}, {"_id": 0})
+    except PyMongoError as exc:
+        raise HTTPException(status_code=503, detail="Analysis history is temporarily unavailable.") from exc
+    if not document:
+        raise HTTPException(status_code=404, detail="Analysis was not found in this business workspace.")
+    return {**_public_analysis_summary(document), "result": document["result"]}
+
+
 @app.get("/health")
 async def health() -> dict:
     return {"status": "ok", "service": "solarsleuth-application-backend"}
@@ -447,12 +509,12 @@ async def analyze_upload(
                 "ml_analysis": ml_result,
                 "analysis_mode": ml_result.get("analysis_mode"),
             })
-            return validated
+            validated = validated
         except HTTPException as exc:
             # Preserve a valid deterministic result if only explanation fails.
             if exc.status_code not in {502, 503, 504}:
                 raise
-            return AnalyzeResponse(
+            validated = AnalyzeResponse(
                 request_id=request_id,
                 plant_id=plant_id,
                 model="unavailable",
@@ -471,5 +533,7 @@ async def analyze_upload(
         except Exception as exc:
             # Do not leak upstream exception text or discard successful ML facts.
             raise HTTPException(status_code=502, detail="The local LLM returned an invalid explanation response.") from exc
+        await _persist_analysis(account, filename, plant_id, validated)
+        return validated
     finally:
         ANALYSIS_SLOTS.release()
