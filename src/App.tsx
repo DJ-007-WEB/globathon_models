@@ -288,8 +288,9 @@ export default function App() {
       if(!raw.ml_analysis) throw new Error("The backend response did not include the deterministic ML result.");
       if(!raw.analysis || typeof raw.analysis !== "object") throw new Error("The backend response did not include a valid AI explanation.");
       setUploadStage("complete");
-      setTurns(old=>old.map(t=>t.id===id?{...t,loading:false,result:raw}:t));
-      setSelectedTurnId(id);
+      const savedId=raw.request_id||id;
+      setTurns(old=>old.map(t=>t.id===id?{...t,id:savedId,loading:false,result:raw}:t));
+      setSelectedTurnId(savedId);
     }catch(err){
       const msg=err instanceof Error?err.message:"Unable to complete dataset analysis.";
       setUploadStage("failed");
