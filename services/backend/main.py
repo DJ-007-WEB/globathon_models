@@ -509,7 +509,6 @@ async def analyze_upload(
                 "ml_analysis": ml_result,
                 "analysis_mode": ml_result.get("analysis_mode"),
             })
-            validated = validated
         except HTTPException as exc:
             # Preserve a valid deterministic result if only explanation fails.
             if exc.status_code not in {502, 503, 504}:
