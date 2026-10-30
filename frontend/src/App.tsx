@@ -397,7 +397,7 @@ export default function App() {
       setUploadStage("complete");
       const savedId=raw.request_id||id;
       setTurns(old=>old.map(t=>t.id===id?{...t,id:savedId,loading:false,result:raw}:t));
-      setSelectedTurnId(savedId);setDashboardPlantId(plantId.trim()||dashboardPlantId);setPage("overview");
+      setSelectedTurnId(savedId);setDashboardPlantId(plantId.trim()||dashboardPlantId);setPlantHistory(old=>[...old.filter(t=>t.id!==savedId),{id:savedId,question:"Dataset analysis: "+datasetFile.name,createdAt:Date.now(),result:raw}]);setPage("overview");
     }catch(err){
       const msg=err instanceof Error?err.message:"Unable to complete dataset analysis.";
       setUploadStage("failed");
