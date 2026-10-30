@@ -63,3 +63,17 @@ Ollama running on a developer's laptop is not automatically accessible to a sepa
 - Do not treat synthetic examples as real plant data.
 - Do not claim training, evaluation, export, or deployment succeeded without test evidence.
 - Keep changes in this branch focused on the LLM workstream.
+
+
+## Application API integration
+
+The integration branch registers the FastAPI lifespan so `app.state.llm_service` is initialized before requests. Model weights remain lazy-loaded on the first inference call. The backend sends the deterministic ML result in `ml_results`; this service is responsible only for evidence-grounded explanation and structured response generation.
+
+Set the same `INTERNAL_SERVICE_TOKEN` in the AI service and application backend. In production, set `ENVIRONMENT=production`; inference requests without the configured token are rejected. Keep the API bound to loopback for local development:
+
+```powershell
+$env:INTERNAL_SERVICE_TOKEN="same-long-random-secret-as-backend-and-ml"
+python -m uvicorn api:app --host 127.0.0.1 --port 8000
+```
+
+The local adapter path and base model must match the actual trained/exported artifacts. This integration change fixes API initialization; it does not certify adapter availability, model compatibility, or inference quality.
