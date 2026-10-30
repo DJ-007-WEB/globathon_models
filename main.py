@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import os
 import tempfile
+from contextlib import asynccontextmanager
 from pathlib import Path
 from secrets import compare_digest
 from uuid import uuid4
@@ -76,8 +77,6 @@ def _compact_ml_result(result: dict[str, Any]) -> dict[str, Any]:
 async def lifespan(app: FastAPI):
     yield
 
-
-from contextlib import asynccontextmanager
 
 app = FastAPI(
     title="Solar Recovery Intelligence Backend",
