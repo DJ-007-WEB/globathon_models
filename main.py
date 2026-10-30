@@ -6,7 +6,6 @@ the bounded, structured ML result and produces language explanations only.
 from __future__ import annotations
 
 import os
-import tempfile
 from contextlib import asynccontextmanager
 from pathlib import Path
 from secrets import compare_digest
@@ -258,7 +257,14 @@ async def analyze_dataset(
         "ml_results": compact,
         "retrieved_context": [],
     }
-    raw_result = await forward_to_llm(llm_payload)
+    try:
+        raw_result = await forward_to_llm(llm_payload)
+    except HTTPException:
+        raise
+    except httpx.TimeoutException as exc:
+        raise HTTPException(status_code=504, detail="Local explanation request timed out.") from exc
+    except httpx.RequestError as exc:
+        raise HTTPException(status_code=503, detail="Local explanation service is unavailable.") from exc
     raw_result["request_id"] = request_id
     raw_result["plant_id"] = plant_id.strip()
     raw_result["ml_analysis"] = ml_result
