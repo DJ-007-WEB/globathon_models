@@ -50,18 +50,18 @@ def validate_upload(filename: str, content: bytes) -> None:
     """Perform cheap boundary checks before handing bytes to pandas/openpyxl."""
     suffix = Path(filename).suffix.lower()
     if suffix == ".xlsx":
-        if not content.startswith(b"PK\\x03\\x04"):
+        if not content.startswith(bytes((0x50, 0x4B, 0x03, 0x04))):
             raise HTTPException(status_code=415, detail="The XLSX file signature is invalid.")
         return
     if suffix == ".csv":
-        if content.startswith((b"PK\\x03\\x04", b"\\xd0\\xcf\\x11\\xe0")):
+        if content.startswith((bytes((0x50, 0x4B, 0x03, 0x04)), bytes((0xD0, 0xCF, 0x11, 0xE0)))):
             raise HTTPException(status_code=415, detail="The CSV extension does not match the uploaded content.")
         try:
             decoded = content.decode("utf-8-sig")
         except UnicodeDecodeError as exc:
             raise HTTPException(status_code=415, detail="CSV files must use UTF-8 encoding.") from exc
         header = next((line for line in decoded.splitlines() if line.strip()), "")
-        if not header or not any(delimiter in header for delimiter in (",", ";", "\\t")):
+        if not header or not any(delimiter in header for delimiter in (",", ";", chr(9))):
             raise HTTPException(status_code=422, detail="The CSV must contain a delimited header row.")
         return
     raise HTTPException(status_code=415, detail="Only CSV and XLSX operating-data files are supported.")
@@ -95,7 +95,7 @@ async def analyze_upload(
 ) -> dict:
     require_service_token(x_service_token)
 
-    filename = Path((file.filename or "dataset").replace("\\\\", "/")).name
+    filename = Path((file.filename or "dataset").replace(chr(92), "/")).name
     suffix = Path(filename).suffix.lower()
     if suffix not in {".csv", ".xlsx"}:
         await file.close()
