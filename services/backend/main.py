@@ -296,6 +296,8 @@ async def register_account(payload: RegisterPayload) -> dict:
         raise HTTPException(status_code=422, detail="Business name must contain 2 to 120 characters.")
     if len(payload.password) < 10 or len(payload.password) > 128:
         raise HTTPException(status_code=422, detail="Password must contain 10 to 128 characters.")
+    if len(JWT_SECRET) < 32:
+        raise HTTPException(status_code=503, detail="JWT_SECRET is not configured. Set a random secret of at least 32 characters.")
     user = {"user_id": str(uuid4()), "business_id": str(uuid4()), "name": name,
             "email": email, "business_name": business_name,
             "password_hash": password_hasher.hash(payload.password),
