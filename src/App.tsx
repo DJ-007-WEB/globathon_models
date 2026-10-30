@@ -9,7 +9,8 @@ type Analysis = {
   limitations: string[];
   confidence: "low" | "moderate" | "high" | "insufficient_evidence";
 };
-type ApiResult = { request_id?: string | null; plant_id?: string; model?: string; analysis: Analysis };
+type MlAnalysis = Record<string, any>;
+type ApiResult = { request_id?: string | null; plant_id?: string; model?: string; analysis: Analysis; ml_analysis?: MlAnalysis | null; analysis_mode?: string | null };
 type Turn = { id: string; question: string; result?: ApiResult; error?: string; loading?: boolean };
 
 const DEFAULT_API = "http://127.0.0.1:8001";
@@ -30,6 +31,31 @@ function BrandMark() {
   return <span className="brand-mark"><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M20 4 5 12.5v15L20 36l15-8.5v-15L20 4Z" fill="none" stroke="currentColor" strokeWidth="1.7"/><path d="M20 10v20M10 15.5l20 9M10 24.5l20-9" stroke="currentColor" strokeWidth="1.5"/><circle cx="20" cy="20" r="4" fill="currentColor"/></svg></span>;
 }
 
+function MlAnalysisResponse({ result }: { result: MlAnalysis }) {
+  const energy = result.energy || {};
+  const waterfall = result.waterfall || {};
+  const fmt = (v: unknown, unit = "kWh") => typeof v === "number" && Number.isFinite(v) ? `${v.toLocaleString(undefined,{maximumFractionDigits:2})} ${unit}` : "Unavailable";
+  const anomalies = Array.isArray(result.anomalies) ? result.anomalies : [];
+  const hypotheses = Array.isArray(result.hypotheses) ? result.hypotheses : [];
+  const limitations = Array.isArray(result.limitations) ? result.limitations : [];
+  return <section className="analysis-section" style={{marginBottom:18}}>
+    <div className="eyebrow">DETERMINISTIC ML · ${String(result.analysis_status||"unknown").toUpperCase()}</div>
+    <h3>Calculated plant analysis</h3>
+    <p>{result.summary || "The ML service returned a structured analysis."}</p>
+    <div className="metric-grid">
+      <div className="metric-card"><span>Forecast energy</span><strong>{fmt(energy.forecast?.value_kwh ?? result.forecast_energy)}</strong></div>
+      <div className="metric-card"><span>Expected energy</span><strong>{fmt(energy.expected?.value_kwh ?? result.expected_energy)}</strong></div>
+      <div className="metric-card"><span>Actual energy</span><strong>{fmt(energy.actual?.value_kwh ?? result.actual_energy)}</strong></div>
+      <div className="metric-card"><span>Deviation</span><strong>{fmt(energy.deviation?.value_kwh ?? result.deviation)}</strong></div>
+    </div>
+    {Object.keys(waterfall).length>0&&<div className="analysis-section"><h3>Energy waterfall</h3><pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere",fontSize:12}}>{JSON.stringify(waterfall,null,2)}</pre></div>}
+    {anomalies.length>0&&<div className="analysis-section"><h3>Detected anomalies ({anomalies.length})</h3><ul>{anomalies.slice(0,20).map((a:any,i:number)=><li key={i}>{typeof a==="string"?a:JSON.stringify(a)}</li>)}</ul></div>}
+    {hypotheses.length>0&&<div className="analysis-section"><h3>ML hypotheses</h3><ul>{hypotheses.slice(0,20).map((h:any,i:number)=><li key={i}>{typeof h==="string"?h:JSON.stringify(h)}</li>)}</ul></div>}
+    {limitations.length>0&&<div className="analysis-section"><h3>ML limitations</h3><ul>{limitations.slice(0,20).map((x:any,i:number)=><li key={i}>{String(x)}</li>)}</ul></div>}
+    <p className="inline-note">Numerical values and anomaly calculations originate from the deterministic ML service. The LLM explanation follows below.</p>
+  </section>;
+}
+
 function AnalysisResponse({ result }: { result: ApiResult }) {
   const a = result.analysis;
   const sections: Array<[string, string[] | undefined, string]> = [
@@ -40,6 +66,7 @@ function AnalysisResponse({ result }: { result: ApiResult }) {
     ["Limitations and uncertainty", a.limitations, "No limitations were reported by the model."],
   ];
   return <div className="assistant-response">
+    {result.ml_analysis && <MlAnalysisResponse result={result.ml_analysis}/>}
     <div className="analysis-topline">
       <div><div className="eyebrow">ANALYSIS RESPONSE</div><div className="analysis-meta">{result.plant_id || "Solar plant"}{result.model ? " · " + result.model : ""}</div></div>
       <span className={"confidence-pill " + a.confidence}>{pretty(a.confidence || "insufficient_evidence") + " confidence"}</span>
@@ -78,13 +105,18 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [customApi, setCustomApi] = useState(getApiBase);
+  const [datasetFile, setDatasetFile] = useState<File | null>(null);
+  const [uploadMode, setUploadMode] = useState("auto");
+  const [uploadTimezone, setUploadTimezone] = useState("");
+  const [uploadInterval, setUploadInterval] = useState("");
+  const [uploadSheet, setUploadSheet] = useState("");
 
   useEffect(() => {
     try { const t=localStorage.getItem("solarsleuth_theme"); if(t==="light"||t==="dark")setTheme(t); const s=localStorage.getItem("solarsleuth_demo_session"); if(s){const u=JSON.parse(s);setAuthed(true);setUserName(u.name||"Demo Analyst");setEmail(u.email||"demo@solarsleuth.app");} } catch {}
   }, []);
   useEffect(() => { document.documentElement.dataset.theme=theme; try{localStorage.setItem("solarsleuth_theme",theme)}catch{} },[theme]);
   const checkReady = useCallback(async () => {
-    try { const r=await fetch(apiBase+"/ready",{signal:AbortSignal.timeout(4500)}); const j=await r.json(); setReady(r.ok&&j.model_loaded ? "ready" : "offline"); }
+    try { const r=await fetch(apiBase+"/ready",{signal:AbortSignal.timeout(4500)}); const j=await r.json(); setReady(r.ok&&j.ml_service_reachable&&j.llm_api_reachable ? "ready" : "offline"); }
     catch { setReady("offline"); }
   },[apiBase]);
   useEffect(() => { void checkReady(); const id=window.setInterval(()=>void checkReady(),15000); return ()=>window.clearInterval(id); },[checkReady]);
@@ -154,8 +186,32 @@ export default function App() {
       setError(msg);
     }finally{setBusy(false);}
   };
+  const uploadDataset = async (e: FormEvent) => {
+    e.preventDefault();
+    if(!datasetFile){setError("Choose a CSV or XLSX dataset first.");return;}
+    const form=new FormData();
+    form.append("file",datasetFile);
+    form.append("plant_id",plantId.trim()||"unknown-plant");
+    form.append("mode",uploadMode);
+    if(uploadTimezone.trim())form.append("timezone",uploadTimezone.trim());
+    if(uploadInterval.trim())form.append("interval_minutes",uploadInterval.trim());
+    if(uploadSheet.trim())form.append("sheet_name",uploadSheet.trim());
+    const id=Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+    setError("");setBusy(true);setPage("assistant");
+    setTurns(old=>[...old,{id,question:`Dataset analysis: ${datasetFile.name}`,loading:true}]);
+    try{
+      const response=await fetch(apiBase+"/api/v1/analyze/upload",{method:"POST",body:form,signal:AbortSignal.timeout(360000)});
+      const raw=await response.json();
+      if(!response.ok)throw new Error(typeof raw.detail==="string"?raw.detail:JSON.stringify(raw.detail||raw));
+      if(!raw.analysis||typeof raw.analysis!=="object"||!raw.ml_analysis)throw new Error("The backend response is missing the deterministic ML result or LLM explanation.");
+      setTurns(old=>old.map(t=>t.id===id?{...t,loading:false,result:raw}:t));
+    }catch(err){
+      const msg=err instanceof Error?err.message:"Unable to complete dataset analysis.";
+      setTurns(old=>old.map(t=>t.id===id?{...t,loading:false,error:msg}:t));setError(msg);
+    }finally{setBusy(false);}
+  };
   const quickPrompt=(q:string)=>{setQuestion(q);setPage("assistant");void submitAnalysis(undefined,q);};
-  const statusText=ready==="ready"?"Local model ready":ready==="checking"?"Checking local model":"Model unavailable";
+  const statusText=ready==="ready"?"ML + LLM services connected":ready==="checking"?"Checking local services":"One or more services unavailable";
   const nav=[{id:"overview" as const,label:"Overview",icon:"◫"},{id:"data" as const,label:"Data upload",icon:"⇧"},{id:"analysis" as const,label:"Variance analysis",icon:"⌁"},{id:"class" as const,label:"Cause classification",icon:"◉"},{id:"valid" as const,label:"Validation lab",icon:"✓"},{id:"report" as const,label:"Investor report",icon:"▤"},{id:"why" as const,label:"Methodology",icon:"◇"},{id:"assistant" as const,label:"AI assistant",icon:"✳"}];
 
   return <>
@@ -173,7 +229,7 @@ export default function App() {
       <section className="controls-panel"><div><label>Service status</label><div className="engine-status"><span className={"status-dot "+(ready==="ready"?"":"")}></span>{statusText}</div></div><div><label>Backend API</label><input aria-label="Backend API URL" value={customApi} onChange={e=>setCustomApi(e.target.value)} style={{maxWidth:280}}/></div><button className="small-action" onClick={()=>{const b=customApi.trim().replace(/\/$/,"");if(b){setApiBase(b);try{localStorage.setItem("solarsleuth_api_base",b)}catch{}setReady("checking");setTimeout(()=>void checkReady(),50)}}}>Connect</button></section>
       {page==="overview"&&<><div className="metric-grid"><div className="metric-card"><span>Current output</span><strong>{currentPower} kW</strong><span>Entered plant reading</span></div><div className="metric-card"><span>Expected output</span><strong>{expectedPower} kW</strong><span>Reference value supplied</span></div><div className="metric-card"><span>Output difference</span><strong>{Number(expectedPower)-Number(currentPower)} kW</strong><span>Simple difference, not a diagnosis</span></div></div><div className="analysis-card"><div className="analysis-topline"><div><div className="eyebrow">SOLAR RECOVERY INTELLIGENCE</div><h2>Ready to review the plant</h2><p className="analysis-meta">Enter readings in Plant analysis, then ask the local model to explain them.</p></div><span className="confidence-pill">Evidence first</span></div><button className="primary-action" onClick={()=>setPage("analysis")}>Open plant analysis <span>↗</span></button></div></>}
       {page==="analysis"&&<><div className="field-grid"><div className="field-card"><label htmlFor="plantId">Plant identifier</label><input id="plantId" value={plantId} onChange={e=>setPlantId(e.target.value)} placeholder="solar-plant-01"/></div><div className="field-card"><label htmlFor="capacity">Plant capacity (kW)</label><input id="capacity" type="number" min="0" value={capacity} onChange={e=>setCapacity(e.target.value)}/><small>Context only; not used to infer output.</small></div><div className="field-card"><label htmlFor="currentPower">Current power (kW)</label><input id="currentPower" type="number" min="0" value={currentPower} onChange={e=>setCurrentPower(e.target.value)}/></div><div className="field-card"><label htmlFor="expectedPower">Expected power (kW)</label><input id="expectedPower" type="number" min="0" value={expectedPower} onChange={e=>setExpectedPower(e.target.value)}/></div><div className="field-card"><label htmlFor="temperature">Panel temperature (°C)</label><input id="temperature" type="number" min="0" value={temperature} onChange={e=>setTemperature(e.target.value)}/></div><div className="field-card"><label htmlFor="irradiance">Irradiance (W/m²)</label><input id="irradiance" type="number" min="0" value={irradiance} onChange={e=>setIrradiance(e.target.value)}/></div></div><div className="analysis-card"><h2>What would you like to understand?</h2><p className="analysis-meta">The model receives the readings above and your question as context.</p><form className="assistant-composer" onSubmit={e=>{setPage("assistant");void submitAnalysis(e)}}><textarea className="question-input" value={question} onChange={e=>setQuestion(e.target.value)} placeholder="Ask about the readings…" rows={2}/><button className="primary-action" type="submit" disabled={busy}>{busy?"Analysing…":"Analyse readings ↗"}</button></form>{error&&<div className="inline-error" role="alert">{error}</div>}<div className="suggestion-row">{["Explain the output difference","What should a technician check first?","What information is missing?"].map(q=><button className="suggestion-chip" key={q} onClick={()=>{setQuestion(q);setPage("assistant");void submitAnalysis(undefined,q)}}>{q}</button>)}</div></div></>}
-      {page==="data"&&<div className="analysis-card"><div className="eyebrow">DATA INPUT</div><h2>Bring plant readings into the workspace</h2><p className="analysis-summary">The current backend contract accepts structured plant context and observations. CSV ingestion is not exposed by this API yet, so no upload will be claimed as processed.</p><button className="primary-action" onClick={()=>setPage("analysis")}>Enter readings manually ↗</button><p className="inline-note" style={{marginTop:14}}>Supported readings: current power, expected power, panel temperature and irradiance.</p></div>}
+      {page==="data"&&<div className="analysis-card"><div className="eyebrow">DATA INGESTION · CSV / XLSX</div><h2>Upload plant operating data</h2><p className="analysis-summary">The backend sends the file to the deterministic ML service first. Only its structured analysis is passed to the local LLM for explanation.</p><form onSubmit={uploadDataset} className="field-grid"><div className="field-card" style={{gridColumn:"1 / -1"}}><label htmlFor="datasetFile">Operating data file</label><input id="datasetFile" type="file" accept=".csv,.xlsx" onChange={e=>setDatasetFile(e.target.files?.[0]||null)} required/><small>CSV or XLSX · Maximum 25 MiB · One operating-data file per request</small></div><div className="field-card"><label htmlFor="uploadMode">Analysis mode</label><select id="uploadMode" value={uploadMode} onChange={e=>setUploadMode(e.target.value)}><option value="auto">Automatic</option><option value="snapshot">Snapshot</option><option value="full">Full time-series</option></select></div><div className="field-card"><label htmlFor="uploadTimezone">IANA timezone (optional)</label><input id="uploadTimezone" value={uploadTimezone} onChange={e=>setUploadTimezone(e.target.value)} placeholder="Asia/Kolkata"/></div><div className="field-card"><label htmlFor="uploadInterval">Interval minutes (optional)</label><input id="uploadInterval" type="number" min="0.01" step="any" value={uploadInterval} onChange={e=>setUploadInterval(e.target.value)} placeholder="Auto-detect"/></div><div className="field-card"><label htmlFor="uploadSheet">Excel sheet name (optional)</label><input id="uploadSheet" value={uploadSheet} onChange={e=>setUploadSheet(e.target.value)} placeholder="First sheet by default"/></div><div style={{gridColumn:"1 / -1"}}><button className="primary-action" type="submit" disabled={busy||!datasetFile}>{busy?"Running ML then LLM…":"Upload and analyse ↗"}</button>{error&&<div className="inline-error" role="alert">{error}</div>}</div></form><p className="inline-note" style={{marginTop:14}}>The current HTTP integration accepts one operating-data file. The ML Python pipeline supports additional context inputs, but multi-file weather/device/forecast/event-log upload is not yet exposed here.</p><button className="text-link" onClick={()=>setPage("analysis")}>Use existing manual input instead ↗</button></div>}
       {page==="class"&&<div className="analysis-card"><div className="eyebrow">HYPOTHESES · NOT CONFIRMED FAULTS</div><h2>Cause classification</h2>{turns.filter(t=>t.result).length===0?<div className="analysis-empty"><div className="empty-icon">◉</div><p>Run an analysis first to see possible causes returned by the model.</p><button className="primary-action" onClick={()=>setPage("analysis")}>Start analysis ↗</button></div>:<div className="analysis-grid">{turns.filter(t=>t.result).slice(-1).map(t=>(t.result!.analysis.possible_causes||[]).length?(t.result!.analysis.possible_causes.map((cause,i)=><section className="analysis-section" key={i}><h3>{pretty(cause)}</h3><p>Model-generated hypothesis. Verify against plant telemetry before treating it as a cause.</p></section>)):<section className="analysis-section" key={t.id}><h3>No supported cause returned</h3><p>The latest response did not identify a possible cause from the supplied information.</p></section>)}</div>}</div>}
       {page==="valid"&&<div className="analysis-card"><div className="eyebrow">SERVICE & VALIDATION</div><h2>Validation boundaries</h2><div className="metric-grid"><div className="metric-card"><span>Backend readiness</span><strong>{ready==="ready"?"Ready":ready==="checking"?"Checking":"Unavailable"}</strong></div><div className="metric-card"><span>LLM output schema</span><strong>Validated</strong><span>By the backend contract</span></div><div className="metric-card"><span>ML results</span><strong>Optional</strong><span>No teammate ML output is supplied by this form</span></div></div><p className="analysis-summary">This page reports connection and integration boundaries. It does not claim model accuracy or validate the physical correctness of an explanation.</p></div>}
       {page==="report"&&<div className="analysis-card"><div className="analysis-topline"><div><div className="eyebrow">REPORT</div><h2>Latest analysis report</h2><p className="analysis-meta">Generated from the most recent successful local LLM response.</p></div><button className="small-action" onClick={()=>window.print()} disabled={!turns.some(t=>t.result)}>Print / Save PDF</button></div>{turns.filter(t=>t.result).slice(-1).map(t=><div key={t.id}><h3>{t.question}</h3><AnalysisResponse result={t.result!}/></div>)}{!turns.some(t=>t.result)&&<div className="analysis-empty"><p>No successful analysis is available yet.</p><button className="primary-action" onClick={()=>setPage("analysis")}>Run an analysis ↗</button></div>}</div>}
