@@ -66,6 +66,8 @@ async def lifespan(app: FastAPI):
             mongo_client.admin.command("ping")
             database = mongo_client[MONGODB_DATABASE]
             await run_in_threadpool(database.users.create_index, "email", unique=True)
+            await run_in_threadpool(database.plants.create_index, [("business_id", 1), ("plant_id", 1)], unique=True)
+            await run_in_threadpool(database.plants.create_index, [("business_id", 1), ("created_at", -1)])
             await run_in_threadpool(database.analyses.create_index, [("business_id", 1), ("created_at", -1)])
             await run_in_threadpool(database.analyses.create_index, [("business_id", 1), ("request_id", 1)], unique=True)
             await run_in_threadpool(database.analysis_messages.create_index, [("business_id", 1), ("request_id", 1), ("created_at", 1)])
@@ -153,6 +155,14 @@ class RegisterPayload(AuthPayload):
 
 class AnalysisChatPayload(BaseModel):
     question: str
+
+
+class PlantPayload(BaseModel):
+    plant_id: str
+    name: str
+    location: str | None = None
+    capacity_kw: float | None = None
+    timezone: str | None = None
 
 
 def _internal_headers() -> dict[str, str]:
@@ -345,6 +355,87 @@ async def current_account(authorization: str | None = Header(None, alias="Author
         raise HTTPException(status_code=401, detail="Account no longer exists.")
     return _public_user(user)
 
+
+
+
+def _public_plant(document: dict) -> dict:
+    return {key: document.get(key) for key in (
+        "plant_id", "name", "location", "capacity_kw", "timezone", "created_at", "updated_at"
+    ) if key in document} | {
+        "created_at": document["created_at"].isoformat() if isinstance(document.get("created_at"), datetime) else document.get("created_at"),
+        "updated_at": document["updated_at"].isoformat() if isinstance(document.get("updated_at"), datetime) else document.get("updated_at"),
+    }
+
+
+@app.get("/api/v1/plants")
+async def list_plants(authorization: str | None = Header(None, alias="Authorization")) -> dict:
+    account = _authorize_browser(authorization)
+    db = _database_required()
+    query = {"business_id": account["business_id"]}
+    try:
+        cursor = await run_in_threadpool(lambda: db.plants.find(query, {"_id": 0}).sort("created_at", -1).limit(200))
+        items = await run_in_threadpool(lambda: list(cursor))
+    except PyMongoError as exc:
+        raise HTTPException(status_code=503, detail="Plant directory is temporarily unavailable.") from exc
+    return {"items": [_public_plant(item) for item in items]}
+
+
+@app.post("/api/v1/plants")
+async def create_plant(payload: PlantPayload,
+                       authorization: str | None = Header(None, alias="Authorization")) -> dict:
+    account = _authorize_browser(authorization)
+    plant_id, name = payload.plant_id.strip(), payload.name.strip()
+    location = payload.location.strip() if payload.location else None
+    timezone_name = payload.timezone.strip() if payload.timezone else None
+    if not plant_id or len(plant_id) > 128:
+        raise HTTPException(status_code=422, detail="Plant identifier must contain 1 to 128 characters.")
+    if len(name) < 2 or len(name) > 120:
+        raise HTTPException(status_code=422, detail="Plant name must contain 2 to 120 characters.")
+    if location and len(location) > 200:
+        raise HTTPException(status_code=422, detail="Location must be at most 200 characters.")
+    if timezone_name and len(timezone_name) > 64:
+        raise HTTPException(status_code=422, detail="Timezone must be at most 64 characters.")
+    if payload.capacity_kw is not None and (payload.capacity_kw <= 0 or payload.capacity_kw > 1_000_000):
+        raise HTTPException(status_code=422, detail="Capacity must be greater than zero and at most 1,000,000 kW.")
+    db = _database_required()
+    now = datetime.now(timezone.utc)
+    document = {"business_id": account["business_id"], "created_by": account["user_id"],
+                "plant_id": plant_id, "name": name, "location": location,
+                "capacity_kw": payload.capacity_kw, "timezone": timezone_name,
+                "created_at": now, "updated_at": now}
+    try:
+        await run_in_threadpool(db.plants.insert_one, document)
+    except DuplicateKeyError:
+        raise HTTPException(status_code=409, detail="A plant with this identifier already exists in this workspace.")
+    except PyMongoError as exc:
+        raise HTTPException(status_code=503, detail="Plant could not be saved. Check database connectivity.") from exc
+    return _public_plant(document)
+
+
+@app.patch("/api/v1/plants/{plant_id}")
+async def update_plant(plant_id: str, payload: PlantPayload,
+                      authorization: str | None = Header(None, alias="Authorization")) -> dict:
+    account = _authorize_browser(authorization)
+    if payload.plant_id.strip() != plant_id:
+        raise HTTPException(status_code=422, detail="Plant identifier cannot be changed.")
+    name = payload.name.strip()
+    if len(name) < 2 or len(name) > 120:
+        raise HTTPException(status_code=422, detail="Plant name must contain 2 to 120 characters.")
+    if payload.capacity_kw is not None and (payload.capacity_kw <= 0 or payload.capacity_kw > 1_000_000):
+        raise HTTPException(status_code=422, detail="Capacity must be greater than zero and at most 1,000,000 kW.")
+    db = _database_required()
+    query = {"business_id": account["business_id"], "plant_id": plant_id}
+    update = {"name": name, "location": payload.location.strip() if payload.location else None,
+              "capacity_kw": payload.capacity_kw, "timezone": payload.timezone.strip() if payload.timezone else None,
+              "updated_at": datetime.now(timezone.utc)}
+    try:
+        result = await run_in_threadpool(db.plants.update_one, query, {"$set": update})
+        if not result.matched_count:
+            raise HTTPException(status_code=404, detail="Plant was not found in this business workspace.")
+        document = await run_in_threadpool(db.plants.find_one, query, {"_id": 0})
+    except PyMongoError as exc:
+        raise HTTPException(status_code=503, detail="Plant could not be updated.") from exc
+    return _public_plant(document)
 
 
 def _analysis_document(account: dict, filename: str, plant_id: str, result: AnalyzeResponse) -> dict:
