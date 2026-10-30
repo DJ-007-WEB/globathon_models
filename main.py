@@ -93,6 +93,33 @@ async def forward_to_llm(payload: dict) -> dict:
     return await _post_llm(payload)
 
 
+def _compact_ml_for_llm(result: dict) -> dict:
+    """Keep the explanation prompt bounded while preserving the full result for the UI."""
+    compact = {
+        key: result.get(key)
+        for key in (
+            "schema_version", "analysis_status", "analysis_mode", "summary", "request",
+            "interval", "energy", "forecast_energy", "expected_energy", "actual_energy",
+            "deviation", "waterfall", "data_quality", "capabilities", "units",
+            "model_version", "mapping_version", "config_version", "vocab_version",
+            "method", "model_status",
+        )
+        if key in result
+    }
+    for key, limit in (("anomalies", 12), ("hypotheses", 12), ("evidence", 30),
+                       ("limitations", 30), ("unresolved_fields", 30),
+                       ("missing_required_fields", 30), ("errors", 10)):
+        value = result.get(key)
+        if isinstance(value, list):
+            compact[key] = value[:limit]
+    quality = compact.get("data_quality")
+    if isinstance(quality, dict) and isinstance(quality.get("checks"), list):
+        quality = dict(quality)
+        quality["checks"] = quality["checks"][:30]
+        compact["data_quality"] = quality
+    return compact
+
+
 async def _run_ml(
     content: bytes,
     filename: str,
@@ -228,7 +255,7 @@ async def analyze_upload(
             "limitations": ml_result.get("limitations", []),
             "unresolved_fields": ml_result.get("unresolved_fields", []),
         },
-        "ml_results": ml_result,
+        "ml_results": _compact_ml_for_llm(ml_result),
         "retrieved_context": [],
     }
     explanation = await _post_llm(llm_payload)
