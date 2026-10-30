@@ -145,7 +145,8 @@ function MlAnalysisResponse({result}:{result:MlAnalysis}) {
 }
 
 function ValidationLab({result,datasetName}:{result:ApiResult;datasetName:string}) {
-  const ml=result.ml_analysis||{},q=ml.data_quality||{},checks=Array.isArray(q.checks)?q.checks:[];
+  const ml=result.ml_analysis||{},q=ml.data_quality||{};
+  const checks:any[]=Array.isArray(q.checks)?q.checks:[];
   const anomalies=Array.isArray(ml.anomalies)?ml.anomalies:[];
   const hypotheses=Array.isArray(ml.hypotheses)?ml.hypotheses:[];
   const evidence=Array.isArray(ml.evidence)?ml.evidence:[];
