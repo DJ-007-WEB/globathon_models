@@ -69,3 +69,61 @@ def test_jwt_requires_valid_signed_token(monkeypatch):
     with pytest.raises(HTTPException) as denied:
         main._authorize_browser("Bearer invalid")
     assert denied.value.status_code == 401
+
+
+def test_analysis_list_is_scoped_to_authenticated_business(monkeypatch):
+    class Cursor:
+        def sort(self, *args): return self
+        def skip(self, *args): return self
+        def limit(self, *args): return self
+        def __iter__(self): return iter([])
+    class Collection:
+        query = None
+        def find(self, query, projection):
+            self.query = query
+            return Cursor()
+        def count_documents(self, query):
+            assert query == self.query
+            return 0
+    class Database:
+        analyses = Collection()
+    db = Database()
+    monkeypatch.setattr(main, "database", db)
+    monkeypatch.setattr(main, "_authorize_browser", lambda authorization: {
+        "user_id": "user-a", "business_id": "business-a"
+    })
+    with TestClient(main.app) as client:
+        response = client.get("/api/v1/analyses")
+    assert response.status_code == 200
+    assert response.json()["items"] == []
+    assert db.analyses.query == {"business_id": "business-a"}
+
+
+def test_analysis_detail_cannot_cross_business_boundary(monkeypatch):
+    class Collection:
+        query = None
+        def find_one(self, query, projection):
+            self.query = query
+            return None
+    class Database:
+        analyses = Collection()
+    db = Database()
+    monkeypatch.setattr(main, "database", db)
+    monkeypatch.setattr(main, "_authorize_browser", lambda authorization: {
+        "user_id": "user-b", "business_id": "business-b"
+    })
+    with TestClient(main.app) as client:
+        response = client.get("/api/v1/analyses/request-from-business-a")
+    assert response.status_code == 404
+    assert db.analyses.query == {
+        "business_id": "business-b", "request_id": "request-from-business-a"
+    }
+
+
+def test_analysis_history_rejects_invalid_pagination(monkeypatch):
+    monkeypatch.setattr(main, "_authorize_browser", lambda authorization: {
+        "user_id": "user-a", "business_id": "business-a"
+    })
+    with TestClient(main.app) as client:
+        response = client.get("/api/v1/analyses?limit=500")
+    assert response.status_code == 422
