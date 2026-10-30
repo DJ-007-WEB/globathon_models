@@ -9,7 +9,7 @@ type Analysis = {
   limitations: string[];
   confidence: "low" | "moderate" | "high" | "insufficient_evidence";
 };
-type ApiResult = { request_id?: string | null; plant_id?: string; model?: string; analysis: Analysis };
+type ApiResult = { request_id?: string | null; plant_id?: string; model?: string; analysis: Analysis; analysis_mode?: string | null; ml_analysis?: Record<string, any> | null };
 type Turn = { id: string; question: string; result?: ApiResult; error?: string; loading?: boolean };
 
 const DEFAULT_API = "http://127.0.0.1:8001";
@@ -75,6 +75,12 @@ export default function App() {
   const [irradiance, setIrradiance] = useState("800");
   const [question, setQuestion] = useState("Explain the current plant readings and what should be checked first.");
   const [turns, setTurns] = useState<Turn[]>([]);
+  const [datasetFile, setDatasetFile] = useState<File | null>(null);
+  const [uploadMode, setUploadMode] = useState("auto");
+  const [datasetTimezone, setDatasetTimezone] = useState("");
+  const [datasetInterval, setDatasetInterval] = useState("");
+  const [uploadBusy, setUploadBusy] = useState(false);
+  const [uploadError, setUploadError] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [customApi, setCustomApi] = useState(getApiBase);
@@ -154,6 +160,38 @@ export default function App() {
       setError(msg);
     }finally{setBusy(false);}
   };
+  const submitDataset = async (e?: FormEvent) => {
+    e?.preventDefault();
+    if (!datasetFile) { setUploadError("Choose a CSV or XLSX dataset first."); return; }
+    const suffix = datasetFile.name.toLowerCase().split(".").pop();
+    if (suffix !== "csv" && suffix !== "xlsx") { setUploadError("Only CSV and XLSX files are supported."); return; }
+    if (datasetFile.size > 25 * 1024 * 1024) { setUploadError("The maximum dataset size is 25 MB."); return; }
+    if (!plantId.trim()) { setUploadError("Enter a plant identifier before uploading."); return; }
+    setUploadError(""); setUploadBusy(true);
+    const id = Date.now().toString(36) + Math.random().toString(36).slice(2,7);
+    const turn: Turn = { id, question: "Analyse uploaded dataset: " + datasetFile.name, loading: true };
+    setTurns(old => [...old, turn]);
+    try {
+      const form = new FormData();
+      form.append("file", datasetFile, datasetFile.name);
+      form.append("plant_id", plantId.trim());
+      form.append("mode", uploadMode);
+      if (datasetTimezone.trim()) form.append("timezone", datasetTimezone.trim());
+      if (datasetInterval.trim()) form.append("interval_minutes", datasetInterval.trim());
+      const response = await fetch(apiBase + "/api/v1/analyze/upload", {
+        method: "POST", body: form, signal: AbortSignal.timeout(360000)
+      });
+      const raw = await response.json();
+      if (!response.ok) throw new Error(typeof raw.detail === "string" ? raw.detail : "The dataset analysis request failed.");
+      if (!raw.analysis || typeof raw.analysis !== "object" || !raw.ml_analysis) throw new Error("The backend returned an incomplete ML + LLM response.");
+      setTurns(old => old.map(t => t.id === id ? { ...t, loading: false, result: raw } : t));
+      setPage("assistant");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Unable to process this dataset.";
+      setTurns(old => old.map(t => t.id === id ? { ...t, loading: false, error: msg } : t));
+      setUploadError(msg);
+    } finally { setUploadBusy(false); }
+  };
   const quickPrompt=(q:string)=>{setQuestion(q);setPage("assistant");void submitAnalysis(undefined,q);};
   const statusText=ready==="ready"?"Local model ready":ready==="checking"?"Checking local model":"Model unavailable";
   const nav=[{id:"overview" as const,label:"Overview",icon:"◫"},{id:"data" as const,label:"Data upload",icon:"⇧"},{id:"analysis" as const,label:"Variance analysis",icon:"⌁"},{id:"class" as const,label:"Cause classification",icon:"◉"},{id:"valid" as const,label:"Validation lab",icon:"✓"},{id:"report" as const,label:"Investor report",icon:"▤"},{id:"why" as const,label:"Methodology",icon:"◇"},{id:"assistant" as const,label:"AI assistant",icon:"✳"}];
@@ -173,7 +211,29 @@ export default function App() {
       <section className="controls-panel"><div><label>Service status</label><div className="engine-status"><span className={"status-dot "+(ready==="ready"?"":"")}></span>{statusText}</div></div><div><label>Backend API</label><input aria-label="Backend API URL" value={customApi} onChange={e=>setCustomApi(e.target.value)} style={{maxWidth:280}}/></div><button className="small-action" onClick={()=>{const b=customApi.trim().replace(/\/$/,"");if(b){setApiBase(b);try{localStorage.setItem("solarsleuth_api_base",b)}catch{}setReady("checking");setTimeout(()=>void checkReady(),50)}}}>Connect</button></section>
       {page==="overview"&&<><div className="metric-grid"><div className="metric-card"><span>Current output</span><strong>{currentPower} kW</strong><span>Entered plant reading</span></div><div className="metric-card"><span>Expected output</span><strong>{expectedPower} kW</strong><span>Reference value supplied</span></div><div className="metric-card"><span>Output difference</span><strong>{Number(expectedPower)-Number(currentPower)} kW</strong><span>Simple difference, not a diagnosis</span></div></div><div className="analysis-card"><div className="analysis-topline"><div><div className="eyebrow">SOLAR RECOVERY INTELLIGENCE</div><h2>Ready to review the plant</h2><p className="analysis-meta">Enter readings in Plant analysis, then ask the local model to explain them.</p></div><span className="confidence-pill">Evidence first</span></div><button className="primary-action" onClick={()=>setPage("analysis")}>Open plant analysis <span>↗</span></button></div></>}
       {page==="analysis"&&<><div className="field-grid"><div className="field-card"><label htmlFor="plantId">Plant identifier</label><input id="plantId" value={plantId} onChange={e=>setPlantId(e.target.value)} placeholder="solar-plant-01"/></div><div className="field-card"><label htmlFor="capacity">Plant capacity (kW)</label><input id="capacity" type="number" min="0" value={capacity} onChange={e=>setCapacity(e.target.value)}/><small>Context only; not used to infer output.</small></div><div className="field-card"><label htmlFor="currentPower">Current power (kW)</label><input id="currentPower" type="number" min="0" value={currentPower} onChange={e=>setCurrentPower(e.target.value)}/></div><div className="field-card"><label htmlFor="expectedPower">Expected power (kW)</label><input id="expectedPower" type="number" min="0" value={expectedPower} onChange={e=>setExpectedPower(e.target.value)}/></div><div className="field-card"><label htmlFor="temperature">Panel temperature (°C)</label><input id="temperature" type="number" min="0" value={temperature} onChange={e=>setTemperature(e.target.value)}/></div><div className="field-card"><label htmlFor="irradiance">Irradiance (W/m²)</label><input id="irradiance" type="number" min="0" value={irradiance} onChange={e=>setIrradiance(e.target.value)}/></div></div><div className="analysis-card"><h2>What would you like to understand?</h2><p className="analysis-meta">The model receives the readings above and your question as context.</p><form className="assistant-composer" onSubmit={e=>{setPage("assistant");void submitAnalysis(e)}}><textarea className="question-input" value={question} onChange={e=>setQuestion(e.target.value)} placeholder="Ask about the readings…" rows={2}/><button className="primary-action" type="submit" disabled={busy}>{busy?"Analysing…":"Analyse readings ↗"}</button></form>{error&&<div className="inline-error" role="alert">{error}</div>}<div className="suggestion-row">{["Explain the output difference","What should a technician check first?","What information is missing?"].map(q=><button className="suggestion-chip" key={q} onClick={()=>{setQuestion(q);setPage("assistant");void submitAnalysis(undefined,q)}}>{q}</button>)}</div></div></>}
-      {page==="data"&&<div className="analysis-card"><div className="eyebrow">DATA INPUT</div><h2>Bring plant readings into the workspace</h2><p className="analysis-summary">The current backend contract accepts structured plant context and observations. CSV ingestion is not exposed by this API yet, so no upload will be claimed as processed.</p><button className="primary-action" onClick={()=>setPage("analysis")}>Enter readings manually ↗</button><p className="inline-note" style={{marginTop:14}}>Supported readings: current power, expected power, panel temperature and irradiance.</p></div>}
+      {page==="data"&&<div className="analysis-card dataset-workspace">
+        <div className="eyebrow">SECURE DATA INGESTION · CSV / EXCEL</div>
+        <h2>Upload your plant operating dataset</h2>
+        <p className="analysis-summary">The deterministic ML engine ingests the dataset, validates its structure and calculates the energy analysis. Only the structured analysis is then sent to the local LLM for a human-readable explanation.</p>
+        <form onSubmit={submitDataset}>
+          <label className="dataset-dropzone" htmlFor="plant-dataset">
+            <span className="dataset-icon">⇧</span>
+            <strong>{datasetFile ? datasetFile.name : "Choose a plant dataset"}</strong>
+            <span>{datasetFile ? (datasetFile.size / 1024 / 1024).toFixed(2) + " MB · Ready to analyse" : "Drag-and-drop placeholder · or browse CSV / XLSX files"}</span>
+            <input id="plant-dataset" type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={e=>{setDatasetFile(e.target.files?.[0]||null);setUploadError("");}} />
+          </label>
+          <div className="dataset-options">
+            <div className="field-card"><label htmlFor="uploadPlant">Plant identifier</label><input id="uploadPlant" value={plantId} onChange={e=>setPlantId(e.target.value)} maxLength={128}/></div>
+            <div className="field-card"><label htmlFor="uploadMode">Analysis mode</label><select id="uploadMode" value={uploadMode} onChange={e=>setUploadMode(e.target.value)}><option value="auto">Automatic</option><option value="full">Full time-series</option><option value="snapshot">Single snapshot</option></select></div>
+            <div className="field-card"><label htmlFor="uploadTimezone">Timezone (optional)</label><input id="uploadTimezone" value={datasetTimezone} onChange={e=>setDatasetTimezone(e.target.value)} placeholder="e.g. Asia/Kolkata"/></div>
+            <div className="field-card"><label htmlFor="uploadInterval">Interval minutes (optional)</label><input id="uploadInterval" type="number" min="0.01" max="1440" value={datasetInterval} onChange={e=>setDatasetInterval(e.target.value)} placeholder="Detect from timestamps"/></div>
+          </div>
+          <div className="dataset-footer"><span>CSV / XLSX · Maximum 25 MB · Temporary processing only</span><button className="primary-action" type="submit" disabled={uploadBusy || !datasetFile}>{uploadBusy ? "Processing dataset…" : "Run ML analysis ↗"}</button></div>
+        </form>
+        {uploadError&&<div className="inline-error" role="alert">{uploadError}</div>}
+        {uploadBusy&&<div className="pipeline-progress" role="status"><span className="loader"/> Ingesting and validating data <span>→</span> Calculating with ML <span>→</span> Preparing local AI explanation</div>}
+        <div className="pipeline-steps"><div><b>01 · INGEST</b><span>Schema and timestamp detection</span></div><div><b>02 · CALCULATE</b><span>Baseline, anomalies and attribution</span></div><div><b>03 · EXPLAIN</b><span>Local LLM, no numeric calculation</span></div></div>
+      </div>}
       {page==="class"&&<div className="analysis-card"><div className="eyebrow">HYPOTHESES · NOT CONFIRMED FAULTS</div><h2>Cause classification</h2>{turns.filter(t=>t.result).length===0?<div className="analysis-empty"><div className="empty-icon">◉</div><p>Run an analysis first to see possible causes returned by the model.</p><button className="primary-action" onClick={()=>setPage("analysis")}>Start analysis ↗</button></div>:<div className="analysis-grid">{turns.filter(t=>t.result).slice(-1).map(t=>(t.result!.analysis.possible_causes||[]).length?(t.result!.analysis.possible_causes.map((cause,i)=><section className="analysis-section" key={i}><h3>{pretty(cause)}</h3><p>Model-generated hypothesis. Verify against plant telemetry before treating it as a cause.</p></section>)):<section className="analysis-section" key={t.id}><h3>No supported cause returned</h3><p>The latest response did not identify a possible cause from the supplied information.</p></section>)}</div>}</div>}
       {page==="valid"&&<div className="analysis-card"><div className="eyebrow">SERVICE & VALIDATION</div><h2>Validation boundaries</h2><div className="metric-grid"><div className="metric-card"><span>Backend readiness</span><strong>{ready==="ready"?"Ready":ready==="checking"?"Checking":"Unavailable"}</strong></div><div className="metric-card"><span>LLM output schema</span><strong>Validated</strong><span>By the backend contract</span></div><div className="metric-card"><span>ML results</span><strong>Optional</strong><span>No teammate ML output is supplied by this form</span></div></div><p className="analysis-summary">This page reports connection and integration boundaries. It does not claim model accuracy or validate the physical correctness of an explanation.</p></div>}
       {page==="report"&&<div className="analysis-card"><div className="analysis-topline"><div><div className="eyebrow">REPORT</div><h2>Latest analysis report</h2><p className="analysis-meta">Generated from the most recent successful local LLM response.</p></div><button className="small-action" onClick={()=>window.print()} disabled={!turns.some(t=>t.result)}>Print / Save PDF</button></div>{turns.filter(t=>t.result).slice(-1).map(t=><div key={t.id}><h3>{t.question}</h3><AnalysisResponse result={t.result!}/></div>)}{!turns.some(t=>t.result)&&<div className="analysis-empty"><p>No successful analysis is available yet.</p><button className="primary-action" onClick={()=>setPage("analysis")}>Run an analysis ↗</button></div>}</div>}
