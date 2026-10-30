@@ -127,3 +127,86 @@ def test_analysis_history_rejects_invalid_pagination(monkeypatch):
     with TestClient(main.app) as client:
         response = client.get("/api/v1/analyses?limit=500")
     assert response.status_code == 422
+
+
+def test_follow_up_chat_uses_saved_ml_evidence_and_persists_messages(monkeypatch):
+    from datetime import datetime, timezone
+    class Cursor:
+        def __init__(self, values): self.values = values
+        def sort(self, *args): return self
+        def limit(self, *args): return self
+        def __iter__(self): return iter(self.values)
+    class Analyses:
+        def find_one(self, query, projection):
+            assert query == {"business_id": "business-a", "request_id": "analysis-1"}
+            return {"request_id": "analysis-1", "business_id": "business-a",
+                    "plant_id": "plant-1", "analysis_mode": "full",
+                    "result": {"ml_analysis": {"analysis_status": "partial",
+                        "summary": "Actual energy was measured.",
+                        "energy": {"actual": {"value_kwh": 12.5}},
+                        "limitations": ["Forecast unavailable."]},
+                        "analysis": {"summary": "Initial explanation."}}}
+    class Messages:
+        inserted = None
+        def find(self, query, projection):
+            assert query == {"business_id": "business-a", "request_id": "analysis-1"}
+            return Cursor([])
+        def insert_many(self, records): self.inserted = records
+    class Database:
+        analyses = Analyses()
+        analysis_messages = Messages()
+    db = Database()
+    monkeypatch.setattr(main, "database", db)
+    monkeypatch.setattr(main, "_authorize_browser", lambda authorization: {
+        "user_id": "user-a", "business_id": "business-a"
+    })
+    captured = {}
+    async def fake_llm(payload):
+        captured.update(payload)
+        return {"request_id": "analysis-1", "plant_id": "plant-1", "model": "test-model",
+                "analysis": {"summary": "The saved ML result reports 12.5 kWh actual energy.",
+                    "observations": ["The saved result contains 12.5 kWh actual energy."],
+                    "possible_causes": [], "supporting_evidence": ["ml_results.energy.actual"],
+                    "recommended_checks": ["Review the forecast source."],
+                    "limitations": ["Forecast unavailable."], "confidence": "low"}}
+    monkeypatch.setattr(main, "_post_llm", fake_llm)
+    with TestClient(main.app) as client:
+        response = client.post("/api/v1/analyses/analysis-1/chat",
+                               json={"question": "Why is the forecast unavailable?"})
+    assert response.status_code == 200, response.text
+    assert captured["plant_context"]["user_question"] == "Why is the forecast unavailable?"
+    assert captured["ml_results"]["energy"]["actual"]["value_kwh"] == 12.5
+    assert response.json()["answer"]["summary"].startswith("The saved ML result")
+    assert len(db.analysis_messages.inserted) == 2
+    assert [item["role"] for item in db.analysis_messages.inserted] == ["user", "assistant"]
+
+
+def test_follow_up_chat_cannot_access_another_business_analysis(monkeypatch):
+    class Analyses:
+        def find_one(self, query, projection):
+            assert query == {"business_id": "business-b", "request_id": "private-analysis"}
+            return None
+    class Messages:
+        def find(self, *args): raise AssertionError("Must not load chat for an inaccessible report")
+    class Database:
+        analyses = Analyses()
+        analysis_messages = Messages()
+    monkeypatch.setattr(main, "database", Database())
+    monkeypatch.setattr(main, "_authorize_browser", lambda authorization: {
+        "user_id": "user-b", "business_id": "business-b"
+    })
+    with TestClient(main.app) as client:
+        response = client.post("/api/v1/analyses/private-analysis/chat",
+                               json={"question": "Show me the plant's readings"})
+    assert response.status_code == 404
+
+
+def test_follow_up_chat_rejects_empty_or_oversized_question(monkeypatch):
+    monkeypatch.setattr(main, "_authorize_browser", lambda authorization: {
+        "user_id": "user-a", "business_id": "business-a"
+    })
+    with TestClient(main.app) as client:
+        empty = client.post("/api/v1/analyses/a/chat", json={"question": "  "})
+        large = client.post("/api/v1/analyses/a/chat", json={"question": "x" * 2001})
+    assert empty.status_code == 422
+    assert large.status_code == 422
