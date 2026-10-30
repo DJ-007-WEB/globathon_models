@@ -210,3 +210,86 @@ def test_follow_up_chat_rejects_empty_or_oversized_question(monkeypatch):
         large = client.post("/api/v1/analyses/a/chat", json={"question": "x" * 2001})
     assert empty.status_code == 422
     assert large.status_code == 422
+
+
+def test_create_plant_stores_business_scoped_metadata(monkeypatch):
+    class Plants:
+        inserted = None
+        def insert_one(self, document): self.inserted = document
+    class Database:
+        plants = Plants()
+    db = Database()
+    monkeypatch.setattr(main, "database", db)
+    monkeypatch.setattr(main, "_authorize_browser", lambda authorization: {
+        "user_id": "user-1", "business_id": "business-1"
+    })
+    with TestClient(main.app) as client:
+        response = client.post("/api/v1/plants", json={
+            "plant_id": "plant-west", "name": "West Solar Farm",
+            "location": "Pune", "capacity_kw": 250, "timezone": "Asia/Kolkata"
+        })
+    assert response.status_code == 200, response.text
+    assert response.json()["plant_id"] == "plant-west"
+    assert db.plants.inserted["business_id"] == "business-1"
+    assert db.plants.inserted["capacity_kw"] == 250
+
+
+def test_plant_list_is_scoped_to_authenticated_business(monkeypatch):
+    class Cursor:
+        def sort(self, *args): return self
+        def limit(self, *args): return self
+        def __iter__(self): return iter([])
+    class Plants:
+        query = None
+        def find(self, query, projection):
+            self.query = query
+            return Cursor()
+    class Database:
+        plants = Plants()
+    db = Database()
+    monkeypatch.setattr(main, "database", db)
+    monkeypatch.setattr(main, "_authorize_browser", lambda authorization: {
+        "user_id": "user-2", "business_id": "business-2"
+    })
+    with TestClient(main.app) as client:
+        response = client.get("/api/v1/plants")
+    assert response.status_code == 200
+    assert response.json()["items"] == []
+    assert db.plants.query == {"business_id": "business-2"}
+
+
+def test_plant_duplicate_identifier_returns_conflict(monkeypatch):
+    from pymongo.errors import DuplicateKeyError
+    class Plants:
+        def insert_one(self, document): raise DuplicateKeyError("duplicate")
+    class Database:
+        plants = Plants()
+    monkeypatch.setattr(main, "database", Database())
+    monkeypatch.setattr(main, "_authorize_browser", lambda authorization: {
+        "user_id": "user-1", "business_id": "business-1"
+    })
+    with TestClient(main.app) as client:
+        response = client.post("/api/v1/plants", json={
+            "plant_id": "same", "name": "Solar Farm"
+        })
+    assert response.status_code == 409
+
+
+def test_update_plant_cannot_cross_business_boundary(monkeypatch):
+    class Result:
+        matched_count = 0
+    class Plants:
+        def update_one(self, query, update):
+            assert query == {"business_id": "business-b", "plant_id": "plant-a"}
+            return Result()
+    class Database:
+        plants = Plants()
+    monkeypatch.setattr(main, "database", Database())
+    monkeypatch.setattr(main, "_authorize_browser", lambda authorization: {
+        "user_id": "user-b", "business_id": "business-b"
+    })
+    with TestClient(main.app) as client:
+        response = client.patch("/api/v1/plants/plant-a", json={
+            "plant_id": "plant-a", "name": "Renamed Plant"
+        })
+    assert response.status_code == 404
