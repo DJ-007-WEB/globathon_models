@@ -44,6 +44,15 @@ function AnalysisResponse({ result }: { result: ApiResult }) {
       <div><div className="eyebrow">ANALYSIS RESPONSE</div><div className="analysis-meta">{result.plant_id || "Solar plant"}{result.model ? " · " + result.model : ""}</div></div>
       <span className={"confidence-pill " + a.confidence}>{pretty(a.confidence || "insufficient_evidence") + " confidence"}</span>
     </div>
+    {result.ml_analysis&&<section className="ml-result-panel">
+      <div className="eyebrow">DETERMINISTIC ML RESULTS · {result.analysis_mode || result.ml_analysis.analysis_mode || 'ANALYSIS'}</div>
+      <p>{String(result.ml_analysis.summary || "ML analysis completed.")}</p>
+      <div className="ml-energy-grid">
+        {(["forecast","expected","actual","deviation"] as const).map(key=>{const item=result.ml_analysis?.energy?.[key];return <div key={key}><span>{pretty(key)} energy</span><strong>{item?.value_kwh==null?"Unavailable":Number(item.value_kwh).toLocaleString(undefined,{maximumFractionDigits:2})+" kWh"}</strong><small>{item?.status || "not available"}</small></div>;})}
+      </div>
+      <div className="ml-meta-row"><span>Data quality: {result.ml_analysis.data_quality?.status || "not reported"}</span><span>Method: {pretty(result.ml_analysis.method || "not specified")}</span><span>Model status: {pretty(result.ml_analysis.model_status || "not specified")}</span></div>
+      {(result.ml_analysis.limitations||[]).length>0&&<details><summary>ML limitations and data warnings ({result.ml_analysis.limitations.length})</summary><ul>{result.ml_analysis.limitations.slice(0,12).map((x:string,i:number)=><li key={i}>{x}</li>)}</ul></details>}
+    </section>}
     <p className="analysis-summary">{a.summary || "The model did not return a summary."}</p>
     <div className="analysis-grid">
       {sections.map(([title,items,fallback]) => <section className="analysis-section" key={title}><h3>{title}</h3><ul>{listOrFallback(items,fallback).map((item,i)=><li key={i}>{pretty(item)}</li>)}</ul></section>)}
@@ -90,7 +99,7 @@ export default function App() {
   }, []);
   useEffect(() => { document.documentElement.dataset.theme=theme; try{localStorage.setItem("solarsleuth_theme",theme)}catch{} },[theme]);
   const checkReady = useCallback(async () => {
-    try { const r=await fetch(apiBase+"/ready",{signal:AbortSignal.timeout(4500)}); const j=await r.json(); setReady(r.ok&&j.model_loaded ? "ready" : "offline"); }
+    try { const r=await fetch(apiBase+"/ready",{signal:AbortSignal.timeout(4500)}); const j=await r.json(); setReady(r.ok&&j.status === "ready" ? "ready" : "offline"); }
     catch { setReady("offline"); }
   },[apiBase]);
   useEffect(() => { void checkReady(); const id=window.setInterval(()=>void checkReady(),15000); return ()=>window.clearInterval(id); },[checkReady]);
@@ -193,7 +202,7 @@ export default function App() {
     } finally { setUploadBusy(false); }
   };
   const quickPrompt=(q:string)=>{setQuestion(q);setPage("assistant");void submitAnalysis(undefined,q);};
-  const statusText=ready==="ready"?"Local model ready":ready==="checking"?"Checking local model":"Model unavailable";
+  const statusText=ready==="ready"?"Local services ready":ready==="checking"?"Checking local services":"Services unavailable";
   const nav=[{id:"overview" as const,label:"Overview",icon:"◫"},{id:"data" as const,label:"Data upload",icon:"⇧"},{id:"analysis" as const,label:"Variance analysis",icon:"⌁"},{id:"class" as const,label:"Cause classification",icon:"◉"},{id:"valid" as const,label:"Validation lab",icon:"✓"},{id:"report" as const,label:"Investor report",icon:"▤"},{id:"why" as const,label:"Methodology",icon:"◇"},{id:"assistant" as const,label:"AI assistant",icon:"✳"}];
 
   return <>
