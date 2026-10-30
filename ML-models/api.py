@@ -17,7 +17,7 @@ from starlette.concurrency import run_in_threadpool
 from src.pipeline import run_pipeline
 
 MAX_UPLOAD_BYTES = int(os.getenv("ML_MAX_UPLOAD_BYTES", str(25 * 1024 * 1024)))
-SERVICE_TOKEN = os.getenv("ML_SERVICE_TOKEN", "")
+SERVICE_TOKEN = os.getenv("INTERNAL_SERVICE_TOKEN", os.getenv("ML_SERVICE_TOKEN", ""))
 ALLOWED_SUFFIXES = {".csv", ".xlsx"}
 
 app = FastAPI(
