@@ -36,6 +36,37 @@ async function loadStoredAnalyses(base: string, token: string): Promise<Turn[]> 
 }
 
 
+async function loadPlantHistory(base: string, token: string, plantId: string): Promise<Turn[]> {
+  const headers = { Authorization: "Bearer " + token };
+  const query = new URLSearchParams({ limit: "100", offset: "0", plant_id: plantId });
+  const response = await fetch(base + "/api/v1/analyses?" + query.toString(), {
+    headers, signal: AbortSignal.timeout(20000)
+  });
+  if (!response.ok) throw new Error("Unable to load this plant's analysis history.");
+  const payload = await response.json();
+  const items = Array.isArray(payload.items) ? payload.items : [];
+  const details = await Promise.all(items.map(async (item: any) => {
+    try {
+      const detail = await fetch(base + "/api/v1/analyses/" + encodeURIComponent(item.request_id), {
+        headers, signal: AbortSignal.timeout(20000)
+      });
+      if (!detail.ok) return null;
+      const value = await detail.json();
+      if (!value.result?.ml_analysis || !value.result?.analysis) return null;
+      return { id: value.request_id, question: "Dataset analysis: " + value.filename,
+        createdAt: Date.parse(value.created_at) || Date.now(), result: value.result } as Turn;
+    } catch { return null; }
+  }));
+  return details.filter((item): item is Turn => Boolean(item)).reverse();
+}
+
+const energyMetric = (turn: Turn | undefined, key: string): number | null => {
+  const value = turn?.result?.ml_analysis?.energy?.[key]?.value_kwh;
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+};
+const formatEnergy = (value: number | null): string =>
+  value === null ? "Not reported" : value.toLocaleString(undefined, { maximumFractionDigits: 2 }) + " kWh";
+
 const DEFAULT_API = "http://127.0.0.1:8001";
 const getApiBase = () => {
   try {
@@ -190,6 +221,12 @@ export default function App() {
   const [customApi, setCustomApi] = useState(getApiBase);
   const [plantId, setPlantId] = useState("");
   const [plants, setPlants] = useState<Plant[]>([]);
+  const [dashboardPlantId, setDashboardPlantId] = useState("");
+  const [plantHistory, setPlantHistory] = useState<Turn[]>([]);
+  const [plantHistoryBusy, setPlantHistoryBusy] = useState(false);
+  const [plantHistoryError, setPlantHistoryError] = useState("");
+  const [compareLeftId, setCompareLeftId] = useState("");
+  const [compareRightId, setCompareRightId] = useState("");
   const [plantName, setPlantName] = useState("");
   const [plantLocation, setPlantLocation] = useState("");
   const [plantCapacity, setPlantCapacity] = useState("");
@@ -218,6 +255,31 @@ export default function App() {
     } catch {}
   }, []);
   useEffect(() => { document.documentElement.dataset.theme=theme; try{localStorage.setItem("solarsleuth_theme",theme)}catch{} },[theme]);
+  useEffect(() => {
+    if (!authed || !accessToken || !dashboardPlantId) {
+      setPlantHistory([]);
+      return;
+    }
+    let active = true;
+    setPlantHistoryBusy(true);
+    setPlantHistoryError("");
+    loadPlantHistory(apiBase, accessToken, dashboardPlantId)
+      .then(items => {
+        if (!active) return;
+        setPlantHistory(items);
+        setCompareLeftId(items[0]?.id || "");
+        setCompareRightId(items[1]?.id || items[0]?.id || "");
+      })
+      .catch(err => {
+        if (active) {
+          setPlantHistory([]);
+          setPlantHistoryError(err instanceof Error ? err.message : "Unable to load plant history.");
+        }
+      })
+      .finally(() => { if (active) setPlantHistoryBusy(false); });
+    return () => { active = false; };
+  }, [apiBase, accessToken, authed, dashboardPlantId]);
+
   useEffect(() => {
     if (!accessToken || !selectedTurnId) { setChatMessages([]); return; }
     let active = true;
@@ -248,6 +310,7 @@ export default function App() {
     const items: Plant[] = Array.isArray(data.items) ? data.items : [];
     setPlants(items);
     setPlantId(current => current || items[0]?.plant_id || "");
+    setDashboardPlantId(current => current || items[0]?.plant_id || "");
   };
   const createPlant = async (e: FormEvent) => {
     e.preventDefault();
@@ -266,7 +329,7 @@ export default function App() {
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Unable to register this plant.");
       await refreshPlants();
-      setPlantId(data.plant_id); setPlantName(""); setPlantLocation(""); setPlantCapacity("");
+      setPlantId(data.plant_id); setDashboardPlantId(data.plant_id); setPlantName(""); setPlantLocation(""); setPlantCapacity("");
     } catch (err) { setPlantError(err instanceof Error ? err.message : "Unable to register plant."); }
     finally { setPlantBusy(false); }
   };
@@ -361,6 +424,9 @@ export default function App() {
   const statusText=ready==="ready"?"ML + local AI ready":ready==="warming"?"ML connected · local AI model warming up":ready==="checking"?"Checking backend, ML and AI services":"Backend or a dependent service unavailable";
   const nav=[{id:"overview" as const,label:"Overview",icon:"◫"},{id:"plants" as const,label:"Plants",icon:"⌂"},{id:"data" as const,label:"Upload & analyse",icon:"⇧"},{id:"validation" as const,label:"Validation Lab",icon:"✓"},{id:"report" as const,label:"Reports",icon:"▤"},{id:"assistant" as const,label:"AI explanation",icon:"✳"}];
   const latestTurn = turns.find(t=>t.id===selectedTurnId && t.result) || turns.filter(t=>t.result).slice(-1)[0];
+  const compareLeft = plantHistory.find(t => t.id === compareLeftId);
+  const compareRight = plantHistory.find(t => t.id === compareRightId);
+  const comparisonMetrics = [{ key: "forecast", label: "Forecast energy" }, { key: "expected", label: "Expected energy" }, { key: "actual", label: "Actual energy" }, { key: "deviation", label: "Deviation" }];
 
   return <>
     {showAuth&&<div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="authTitle" onClick={e=>{if(e.target===e.currentTarget)setShowAuth(false)}}><div className="auth-card"><button className="modal-close" aria-label="Close sign-in" onClick={()=>setShowAuth(false)}>×</button><div className="auth-brand"><BrandMark/><b>SolarSleuth</b></div><div className="eyebrow">DEMO WORKSPACE ACCESS</div><h2 id="authTitle">Your solar intelligence workspace.</h2><div className="auth-tabs"><button type="button" className={authMode==="signin"?"on":""} onClick={()=>{setAuthMode("signin");setAuthError("")}}>Sign in</button><button type="button" className={authMode==="signup"?"on":""} onClick={()=>{setAuthMode("signup");setAuthError("")}}>Create account</button></div><form onSubmit={login}>{authMode==="signup"&&<><label htmlFor="authName">Your name</label><input id="authName" autoComplete="name" value={fullName} onChange={e=>setFullName(e.target.value)} placeholder="e.g. Alex Morgan"/><label htmlFor="businessName">Business / organisation</label><input id="businessName" autoComplete="organization" value={businessName} onChange={e=>setBusinessName(e.target.value)} placeholder="Your company or plant operator name"/></>}<label htmlFor="authEmail">Email address</label><input id="authEmail" type="email" autoComplete="username" value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@company.com"/><label htmlFor="authPassword">Password</label><input id="authPassword" type="password" autoComplete={authMode==="signup"?"new-password":"current-password"} value={password} onChange={e=>setPassword(e.target.value)} placeholder={authMode==="signup"?"At least 10 characters":"Enter your password"}/>{authMode==="signup"&&<><label htmlFor="authConfirm">Confirm password</label><input id="authConfirm" type="password" autoComplete="new-password" value={confirmPassword} onChange={e=>setConfirmPassword(e.target.value)} placeholder="Repeat password"/></>}{authError&&<div className="auth-error" role="alert">{authError}</div>}<button className="btn btn-primary btn-lg btn-full" type="submit">{authMode==="signup"?"Create demo account ↗":"Enter demo workspace ↗"}</button></form><p className="inline-note">Accounts are stored by the backend in MongoDB. Passwords are securely hashed; each account receives a separate business workspace.</p></div></div>}
@@ -377,7 +443,26 @@ export default function App() {
       <section className="controls-panel"><div><label>Service status</label><div className="engine-status"><span className={"status-dot "+(ready==="ready"?"":"")}></span>{statusText}</div><small className="service-breakdown">ML API: {serviceChecks.ml?"reachable":"unavailable"} · LLM API: {serviceChecks.llm?"reachable":"unavailable"} · Model: {serviceChecks.model?"loaded":"not loaded"}</small></div><div><label>Backend API</label><input aria-label="Backend API URL" value={customApi} onChange={e=>setCustomApi(e.target.value)} style={{maxWidth:280}}/></div><button className="small-action" onClick={()=>{const b=customApi.trim().replace(/\/$/,"");if(b){setApiBase(b);try{localStorage.setItem("solarsleuth_api_base",b)}catch{}setReady("checking");setTimeout(()=>void checkReady(),50)}}}>Connect</button></section>
       {page==="overview"&&<div className="analysis-card"><div className="eyebrow">FILE-DRIVEN SOLAR INTELLIGENCE</div><h2>{turns.some(t=>t.result)?"Latest plant analysis":"Start with your plant data"}</h2><p className="analysis-summary">{turns.some(t=>t.result)?"Your latest report is based on the uploaded dataset and deterministic ML output. Open Reports to review or save it.":"Upload a CSV or Excel workbook. SolarSleuth validates the file, maps supported columns, runs deterministic analysis, and asks the local AI model to explain the evidence."}</p><div className="metric-grid"><div className="metric-card"><span>Successful analyses</span><strong>{turns.filter(t=>t.result).length}</strong></div><div className="metric-card"><span>Service connection</span><strong>{ready==="ready"?"Ready":ready==="warming"?"Warming up":ready==="checking"?"Checking":"Unavailable"}</strong></div><div className="metric-card"><span>Latest dataset</span><strong>{turns.filter(t=>t.result).length? "Processed":"Not uploaded"}</strong></div></div><button className="primary-action" onClick={()=>setPage("data")}>Upload plant data ↗</button></div>}
 
-      {page==="plants"&&<div className="analysis-card"><div className="eyebrow">ASSET MANAGEMENT · WORKSPACE</div><h2>Plant directory</h2><p className="analysis-summary">Register the solar plants managed by this business workspace. Plant identifiers are unique within your workspace and are attached to future analysis uploads.</p>
+      {page==="plants"&&<div className="analysis-card"><div className="eyebrow">ASSET MANAGEMENT · WORKSPACE</div><h2>Plant directory & performance</h2><p className="analysis-summary">Manage registered plants, inspect each plant's saved analysis history and compare two reports using only metrics returned by deterministic ML.</p>
+        {plants.length > 0 && <section className="dataset-profile" style={{marginBottom:22}}>
+          <div className="dataset-profile-head"><h4>Plant performance dashboard</h4><span>Business workspace · plant-scoped history</span></div>
+          <div className="field-card"><label htmlFor="dashboardPlant">Select plant</label><select id="dashboardPlant" value={dashboardPlantId} onChange={e=>setDashboardPlantId(e.target.value)}>{plants.map(plant=><option key={plant.plant_id} value={plant.plant_id}>{plant.name} · {plant.plant_id}</option>)}</select></div>
+          {plantHistoryBusy ? <p className="inline-note">Loading saved reports for this plant…</p> : plantHistoryError ? <div className="inline-error" role="alert">{plantHistoryError}</div> : <><div className="metric-grid">
+            <div className="metric-card"><span>Saved reports loaded</span><strong>{plantHistory.length}</strong></div>
+            <div className="metric-card"><span>Latest ML status</span><strong>{plantHistory[plantHistory.length-1]?.result?.ml_analysis?.analysis_status || "No report"}</strong></div>
+            <div className="metric-card"><span>Latest analysis</span><strong>{plantHistory.length ? new Date(plantHistory[plantHistory.length-1].createdAt).toLocaleDateString() : "No report"}</strong></div>
+          </div>
+          <h4 style={{marginTop:20}}>Analysis history</h4>
+          {plantHistory.length===0 ? <p>No saved analyses exist for this plant yet. Upload a dataset and select this plant.</p> : <div className="dataset-facts">{plantHistory.slice().reverse().map(item=><div key={item.id}><small>{new Date(item.createdAt).toLocaleString()}</small><strong>{item.question.replace("Dataset analysis: ","")}</strong><span>ML status: {item.result?.ml_analysis?.analysis_status || "Not reported"}</span><button type="button" className="small-action" onClick={()=>{setTurns(old=>old.some(t=>t.id===item.id)?old:old.concat(item));setSelectedTurnId(item.id);setPage("report")}}>Open report ↗</button></div>)}</div>}
+          {plantHistory.length>=2 && <><h4 style={{marginTop:22}}>Compare two reports</h4><div className="field-grid">
+            <div className="field-card"><label htmlFor="compareLeft">Earlier / baseline report</label><select id="compareLeft" value={compareLeftId} onChange={e=>setCompareLeftId(e.target.value)}>{plantHistory.map(item=><option key={item.id} value={item.id}>{new Date(item.createdAt).toLocaleDateString()} · {item.question.replace("Dataset analysis: ","")}</option>)}</select></div>
+            <div className="field-card"><label htmlFor="compareRight">Report to compare</label><select id="compareRight" value={compareRightId} onChange={e=>setCompareRightId(e.target.value)}>{plantHistory.map(item=><option key={item.id} value={item.id}>{new Date(item.createdAt).toLocaleDateString()} · {item.question.replace("Dataset analysis: ","")}</option>)}</select></div>
+          </div>
+          {compareLeft && compareRight && <div style={{overflowX:"auto",marginTop:14}}><table className="comparison-table"><thead><tr><th>ML metric</th><th>Baseline</th><th>Comparison</th><th>Change (comparison − baseline)</th></tr></thead><tbody>{comparisonMetrics.map(metric=>{const a=energyMetric(compareLeft,metric.key);const b=energyMetric(compareRight,metric.key);const delta=a!==null&&b!==null?b-a:null;return <tr key={metric.key}><td>{metric.label}</td><td>{formatEnergy(a)}</td><td>{formatEnergy(b)}</td><td>{delta===null?"Not comparable":(delta>0?"+":"")+formatEnergy(delta)}</td></tr>;})}</tbody></table><p className="inline-note">Values are read directly from each saved ML result. Missing metrics remain unavailable; no values are estimated or recalculated.</p></div>}
+          </>}
+          </>}
+        </section>}
+
         {plantError&&<div className="inline-error" role="alert">{plantError}</div>}
         <div className="dataset-profile" style={{marginBottom:18}}><div className="dataset-profile-head"><h4>Registered plants</h4><span>{plants.length} plants</span></div>
           {plants.length===0?<p>No plants registered yet. Add your first plant below.</p>:<div className="dataset-facts">{plants.map(plant=><div key={plant.plant_id}><small>{plant.plant_id}</small><strong>{plant.name}</strong><span>{plant.location||"Location not set"}{plant.capacity_kw?" · "+plant.capacity_kw.toLocaleString()+" kW":""}</span><button type="button" className="small-action" onClick={()=>{setPlantId(plant.plant_id);setPage("data")}}>Use for upload ↗</button></div>)}</div>}
