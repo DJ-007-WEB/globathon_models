@@ -143,3 +143,25 @@
   .report p{font-size:11.5px}
   .rpt-caption{font-size:10.5px}
 }
+
+
+/* Plant history report comparison */
+.comparison-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 640px;
+  font-size: 13px;
+}
+.comparison-table th,
+.comparison-table td {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line, #e5e7eb);
+  text-align: left;
+  vertical-align: top;
+}
+.comparison-table th {
+  color: var(--muted, #64748b);
+  font-weight: 650;
+  background: var(--surface-soft, #f8fafc);
+}
+.comparison-table td:first-child { font-weight: 650; }
