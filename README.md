@@ -134,7 +134,13 @@ cd ../ml-service
 python -m pytest -q
 ```
 
-Or from the repository root, run `powershell -ExecutionPolicy Bypass -File .\scripts\test-all.ps1` after installing each service's dependencies. It executes all suites and returns a non-zero exit code if any suite fails.
+For an aggregate run, first create and install the service environments as described above, then run from the repository root:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\test-all.ps1
+```
+
+The script uses each service's `.venv` when present and returns a non-zero exit code if any suite fails.
 
 ## Smoke-test service health
 
@@ -169,7 +175,7 @@ Never interpret an ML hypothesis as a confirmed equipment fault. Confirm finding
 
 With a service running, open:
 - Backend: http://127.0.0.1:8001/docs
-- ML: http://127.0.0.1:8002/docs
+- ML: OpenAPI docs are disabled on this private service; use `/health` and `/ready` for smoke checks.
 - LLM: http://127.0.0.1:8000/docs
 
 ## CI and branch safety
