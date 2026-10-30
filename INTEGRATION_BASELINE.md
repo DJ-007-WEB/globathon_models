@@ -95,7 +95,7 @@ Then start the backend:
 python -m uvicorn main:app --host 127.0.0.1 --port 8001
 ```
 
-The backend creates unique email and analysis request indexes in MongoDB. Registration stores a password hash and a separate business workspace ID for each account. Login returns a signed, expiring bearer token. The upload endpoint requires that token. Successful validated ML analyses (including the deterministic fallback when the LLM is unavailable) are stored with business ownership and report metadata; raw uploaded file bytes are not stored. The authenticated history endpoints are `GET /api/v1/analyses?limit=20&offset=0` and `GET /api/v1/analyses/{request_id}`. Both enforce business-workspace scoping. If MongoDB is not configured in development, the backend still starts for health checks, but registration/login and account-backed persistence fail closed with HTTP 503.
+The backend creates unique email and analysis request indexes in MongoDB. Registration stores a password hash and a separate business workspace ID for each account. Login returns a signed, expiring bearer token. The upload endpoint requires that token. Successful validated ML analyses (including the deterministic fallback when the LLM is unavailable) are stored with business ownership and report metadata; raw uploaded file bytes are not stored. The authenticated history endpoints are `GET /api/v1/analyses?limit=20&offset=0` and `GET /api/v1/analyses/{request_id}`. Follow-up chat uses `GET /api/v1/analyses/{request_id}/chat` and `POST /api/v1/analyses/{request_id}/chat` with JSON `{"question":"..." }`. All report and chat queries enforce business-workspace scoping. If MongoDB is not configured in development, the backend still starts for health checks, but registration/login and account-backed persistence fail closed with HTTP 503.
 
 **Terminal 4 — frontend**
 
@@ -131,7 +131,7 @@ python -m pytest -q
 
 - The browser-facing upload contract accepts one operating-data CSV/XLSX file, up to the configured limit. Do not imply separate weather/device/forecast/event-log uploads are exposed.
 - MongoDB-backed registration/login, JWT authorization, and business-scoped persistent analysis history are implemented on the integration branch. The frontend restores the latest 100 reports after authentication; list pagination is available through the backend API.
-- The backend has no grounded follow-up conversation endpoint yet. The existing AI explanation shown after an upload is not a general dataset-aware chatbot.
+- The AI explanation workspace supports follow-up questions against a selected saved analysis. The backend retrieves the report using the authenticated business scope, supplies only bounded deterministic ML evidence and recent conversation context to the local LLM, and stores the user/assistant messages in MongoDB. The LLM response uses the existing strict explanation schema; the saved ML result is never modified. The chat is report-grounded, not a general-purpose chatbot.
 - The trained model adapter is a local artifact and is not included in Git.
 - A successful CI run proves the relevant automated tests/build pass; it does not prove real-world model accuracy or full local GPU inference.
 
