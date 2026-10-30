@@ -685,3 +685,20 @@ The ML pipeline is ready for competition integration when:
 12. Results, limitations, runtime and failure cases are documented in `reports/`.
 
 **Guiding principle:** Build the smallest reliable pipeline that can explain what the data supports, identify what it cannot determine and show its evidence. Complexity is justified only when measured results demonstrate a meaningful improvement.
+
+## Private application API
+
+The integration branch adds `api.py`, a thin FastAPI adapter around the existing `src.pipeline.run_pipeline` entry point. It does not replace or modify the deterministic analysis implementation.
+
+Run from the repository root:
+
+```powershell
+cd ML-models
+python -m pip install -r requirements.txt
+$env:INTERNAL_SERVICE_TOKEN="same-long-random-secret-as-backend-and-ai"
+python -m uvicorn api:app --host 127.0.0.1 --port 8002
+```
+
+The private endpoint `POST /api/v1/analyze` accepts one CSV or XLSX file and form fields `plant_id`, `mode`, optional `timezone`, `interval_minutes`, and `sheet_name`. It invokes the existing pipeline, returns its versioned JSON contract, and deletes its random temporary file after analysis. Default upload limit is 25 MiB. API docs are disabled on this internal service.
+
+Set `INTERNAL_SERVICE_TOKEN` to the same secret used by the application backend and AI API. The service binds to loopback in the documented local setup; do not expose port 8002 publicly.
