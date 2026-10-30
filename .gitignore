@@ -1,24 +1,23 @@
-@'
-# Python environment
+# Python environments
 .venv-ai/
 .venv/
 venv/
 __pycache__/
 *.py[cod]
 
-# Local datasets
+# Local datasets and model artifacts
 data/
-
-# Downloaded model weights and checkpoints
 models/
 checkpoints/
+outputs/
+runs/
 
 # Environment secrets
 .env
 .env.*
 !.env.example
 
-# Training outputs
-outputs/
-runs/
-'@ | Set-Content -Encoding utf8 .gitignore
+# Test/cache artifacts
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
