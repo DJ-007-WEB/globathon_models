@@ -48,3 +48,14 @@ def test_analyze_rejects_missing_observations():
     with TestClient(app) as client:
         response = client.post("/api/v1/analyze", json={"plant_id": "plant-1"})
     assert response.status_code == 422
+
+def test_internal_service_token_is_required_when_configured(monkeypatch):
+    monkeypatch.setattr("api.SERVICE_TOKEN", "test-secret")
+    with TestClient(app) as client:
+        response = client.post("/api/v1/analyze", json={
+            "request_id": "auth-test",
+            "plant_id": "plant-1",
+            "observations": {"source": "test"},
+            "ml_results": {},
+        })
+    assert response.status_code == 401
