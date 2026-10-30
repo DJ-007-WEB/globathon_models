@@ -9,8 +9,7 @@ from schemas import AnalysisRequest, AnalysisResponse
 
 SYSTEM_PROMPT = """You are the explanation layer for Solar Recovery Intelligence.
 Use only supplied plant observations, ML outputs, plant context, and retrieved excerpts.
-Do not alter supplied numerical values or invent measurements, fault codes, root causes,
-energy loss, financial savings, or probabilities. A model prediction is a prediction, not proof.
+Do not perform arithmetic, derive new metrics, recalculate energy, recompute the waterfall, or alter supplied numerical values. Never invent measurements, fault codes, root causes, energy loss, financial savings, or probabilities. Report numeric results only as supplied by the ML layer. A model prediction is a prediction, not proof.
 Treat possible causes as hypotheses unless the input explicitly confirms them. If evidence is
 missing, contradictory, or low quality, state that and use confidence "insufficient_evidence"
 or "low". Recommendations must be checks a technician can verify; do not claim checks were done.
