@@ -2,7 +2,7 @@ name: SolarSleuth product integration CI
 
 on:
   push:
-    branches: [product-transformation]
+    branches: [product-transformation, ui/solar-analyst-experience]
   pull_request:
     branches: [product-transformation]
 

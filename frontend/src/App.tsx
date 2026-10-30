@@ -84,113 +84,117 @@ function BrandMark() {
   return <span className="brand-mark"><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M20 4 5 12.5v15L20 36l15-8.5v-15L20 4Z" fill="none" stroke="currentColor" strokeWidth="1.7"/><path d="M20 10v20M10 15.5l20 9M10 24.5l20-9" stroke="currentColor" strokeWidth="1.5"/><circle cx="20" cy="20" r="4" fill="currentColor"/></svg></span>;
 }
 
-function MlAnalysisResponse({ result }: { result: MlAnalysis }) {
-  const energy = result.energy || {};
-  const waterfall = result.waterfall || {};
-  const fmt = (v: unknown, unit = "kWh") => typeof v === "number" && Number.isFinite(v) ? `${v.toLocaleString(undefined,{maximumFractionDigits:2})} ${unit}` : "Unavailable";
-  const anomalies = Array.isArray(result.anomalies) ? result.anomalies : [];
-  const hypotheses = Array.isArray(result.hypotheses) ? result.hypotheses : [];
-  const limitations = Array.isArray(result.limitations) ? result.limitations : [];
-  return <section className="analysis-section" style={{marginBottom:18}}>
-    <div className="eyebrow">DETERMINISTIC ML · {String(result.analysis_status||"unknown").toUpperCase()}</div>
-    <h3>Calculated plant analysis</h3>
-    <p>{result.summary || "The ML service returned a structured analysis."}</p>
-    <div className="dataset-profile">
-      <div className="dataset-profile-head"><h4>Dataset profile</h4><span>{result.schema_version ? `Contract v${result.schema_version}` : "ML metadata"}</span></div>
-      <div className="dataset-facts">
-        <div><small>Rows analysed</small><strong>{result.interval?.row_count ?? result.data_quality?.rows ?? "Not reported"}</strong></div>
-        <div><small>Sampling interval</small><strong>{typeof result.interval?.sampling_interval_seconds === "number" ? `${result.interval.sampling_interval_seconds} sec` : "Not reported"}</strong></div>
-        <div><small>Timezone</small><strong>{result.interval?.timezone || result.request?.timezone || "Not resolved"}</strong></div>
-        <div><small>Devices</small><strong>{result.interval?.device_count ?? "Not reported"}</strong></div>
-      </div>
-      {(result.interval?.start_utc || result.interval?.end_utc) && <p className="inline-note">Coverage: {result.interval?.start_utc || "Start unavailable"} — {result.interval?.end_utc || "End unavailable"}</p>}
-      {result.units && <div className="unit-list"><strong>Units reported by ML</strong>{Object.entries(result.units).map(([key,value])=><span key={key}><small>{pretty(key)}</small><b>{String(value)}</b></span>)}</div>}
-      {(result.mapping_version || result.vocab_version) && <p className="inline-note">Schema mapping version: {result.mapping_version || "Not reported"} · Vocabulary version: {result.vocab_version || "Not reported"}</p>}
-      {Array.isArray(result.request?.source_files) && result.request.source_files.length>0 && <p className="inline-note">Source files: {result.request.source_files.map((name:string)=>String(name)).join(", ")}</p>}
-    </div>
-    <div className="metric-grid">
-      <div className="metric-card"><span>Forecast energy</span><strong>{fmt(energy.forecast?.value_kwh ?? result.forecast_energy)}</strong></div>
-      <div className="metric-card"><span>Expected energy</span><strong>{fmt(energy.expected?.value_kwh ?? result.expected_energy)}</strong></div>
-      <div className="metric-card"><span>Actual energy</span><strong>{fmt(energy.actual?.value_kwh ?? result.actual_energy)}</strong></div>
-      <div className="metric-card"><span>Deviation</span><strong>{fmt(energy.deviation?.value_kwh ?? result.deviation)}</strong></div>
-    </div>
-    {Object.keys(waterfall).length>0&&<div className="analysis-section"><h3>Energy waterfall</h3><pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere",fontSize:12}}>{JSON.stringify(waterfall,null,2)}</pre></div>}
-    {anomalies.length>0&&<div className="analysis-section"><h3>Detected anomalies ({anomalies.length})</h3><ul>{anomalies.slice(0,20).map((a:any,i:number)=><li key={i}>{typeof a==="string"?a:JSON.stringify(a)}</li>)}</ul></div>}
-    {hypotheses.length>0&&<div className="analysis-section"><h3>ML hypotheses</h3><ul>{hypotheses.slice(0,20).map((h:any,i:number)=><li key={i}>{typeof h==="string"?h:JSON.stringify(h)}</li>)}</ul></div>}
-    {Array.isArray(result.evidence)&&result.evidence.length>0&&<div className="analysis-section"><h3>Deterministic ML evidence</h3><ul>{result.evidence.slice(0,30).map((x:any,i:number)=><li key={i}>{String(x)}</li>)}</ul></div>}
-    {result.data_quality&&<div className="analysis-section"><h3>Data quality · {String(result.data_quality.status||"not reported")}</h3><p>{result.data_quality.rows??"—"} rows inspected · {result.data_quality.counts?.warning??0} warnings · {result.data_quality.counts?.fail??0} failures</p></div>}
-    {Array.isArray(result.unresolved_fields)&&result.unresolved_fields.length>0&&<div className="analysis-section"><h3>Unresolved fields</h3><ul>{result.unresolved_fields.slice(0,30).map((x:any,i:number)=><li key={i}>{String(x)}</li>)}</ul></div>}
-    {limitations.length>0&&<div className="analysis-section"><h3>ML limitations</h3><ul>{limitations.slice(0,20).map((x:any,i:number)=><li key={i}>{String(x)}</li>)}</ul></div>}
-    {Array.isArray(result.data_quality?.checks)&&result.data_quality.checks.length>0&&<div className="analysis-section"><h3>Validation checks</h3><ul>{result.data_quality.checks.slice(0,30).map((check:any,i:number)=><li key={check.check_id||i}><strong>{pretty(String(check.status||"not reported"))}:</strong> {String(check.message||check.check_id||"Validation check")} {typeof check.count==="number"?`(${check.count})`:""}</li>)}</ul></div>}
-    <p className="inline-note">Numerical values and anomaly calculations originate from the deterministic ML service. The LLM explanation follows below.</p>
-  </section>;
+
+function displayValue(value: unknown): string {
+  if (value == null || value === "") return "Not reported";
+  if (typeof value === "string") return value.replaceAll("_", " ");
+  if (typeof value === "number") return Number.isFinite(value) ? value.toLocaleString(undefined,{maximumFractionDigits:3}) : "Not reported";
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (Array.isArray(value)) return value.map(displayValue).join(" · ");
+  if (typeof value === "object") {
+    const record=value as Record<string,unknown>;
+    const keys=["message","description","reason","label","name","type","status","value","count","timestamp","device_id"];
+    const parts=keys.filter(key=>record[key]!=null).map(key=>pretty(key)+": "+displayValue(record[key]));
+    return parts.join(" · ") || Object.entries(record).filter(([,v])=>v==null||typeof v!=="object").map(([k,v])=>pretty(k)+": "+displayValue(v)).join(" · ") || "Details available";
+  }
+  return String(value);
 }
 
-function ValidationLab({ result, datasetName }: { result: ApiResult; datasetName: string }) {
-  const ml = result.ml_analysis || {};
-  const quality = ml.data_quality || {};
-  const checks = Array.isArray(quality.checks) ? quality.checks : [];
-  const anomalies = Array.isArray(ml.anomalies) ? ml.anomalies : [];
-  const hypotheses = Array.isArray(ml.hypotheses) ? ml.hypotheses : [];
-  const evidence = Array.isArray(ml.evidence) ? ml.evidence : [];
-  const limitations = Array.isArray(ml.limitations) ? ml.limitations : [];
-  const count = (status: string) => checks.filter((item: any) => String(item.status || "").toLowerCase() === status).length;
-  return <div className="analysis-card">
-    <div className="eyebrow">VALIDATION LAB · EVIDENCE REVIEW</div>
-    <h2>Review what the analysis actually verified</h2>
-    <p className="analysis-summary">This lab exposes the deterministic ML service's returned checks and evidence. It does not turn a model hypothesis into a confirmed equipment fault.</p>
-    <div className="dataset-profile">
-      <div className="dataset-profile-head"><h4>Analysis under review</h4><span>{String(ml.analysis_status || "status unavailable").toUpperCase()}</span></div>
-      <p><strong>{datasetName}</strong> · Plant {result.plant_id || "not specified"} · {ml.interval?.row_count ?? ml.data_quality?.rows ?? "Unknown"} rows inspected</p>
-      <p className="inline-note">The validation results below come from the deterministic ML response. No operational log file was supplied through the current upload endpoint.</p>
-    </div>
-    <div className="metric-grid">
-      <div className="metric-card"><span>Validation checks</span><strong>{checks.length}</strong></div>
-      <div className="metric-card"><span>Warnings</span><strong>{count("warning")}</strong></div>
-      <div className="metric-card"><span>Failures</span><strong>{count("fail")}</strong></div>
-      <div className="metric-card"><span>Detected anomalies</span><strong>{anomalies.length}</strong></div>
-    </div>
-    <section className="analysis-section">
-      <h3>Data-quality checks</h3>
-      {checks.length ? <ul>{checks.map((item: any, i: number) => <li key={item.check_id || i}><strong>{pretty(String(item.status || "not reported"))}:</strong> {String(item.message || item.check_id || "Validation check")} {typeof item.count === "number" ? `(${item.count})` : ""}</li>)}</ul> : <p>The ML response did not include individual validation checks. Review its data-quality status: <strong>{String(quality.status || "not reported")}</strong>.</p>}
-    </section>
-    <section className="analysis-section"><h3>Model findings and supporting evidence</h3>
-      {anomalies.length ? <ul>{anomalies.slice(0, 30).map((item: any, i: number) => <li key={i}>{typeof item === "string" ? item : JSON.stringify(item)}</li>)}</ul> : <p>No anomaly records were returned by the ML service.</p>}
-      {hypotheses.length > 0 && <><h4>Possible contributing factors (not confirmed faults)</h4><ul>{hypotheses.slice(0, 20).map((item: any, i: number) => <li key={i}>{typeof item === "string" ? item : JSON.stringify(item)}</li>)}</ul></>}
-      {evidence.length > 0 && <><h4>Evidence returned by the ML service</h4><ul>{evidence.slice(0, 30).map((item: any, i: number) => <li key={i}>{String(item)}</li>)}</ul></>}
-    </section>
-    <section className="analysis-section">
-      <h3>Operational log cross-check</h3>
-      <p>No operational log upload is currently part of the existing API contract. Compare the timestamps and devices above with inverter alarms, maintenance records and site operator logs.</p>
-      <p><strong>Important:</strong> If no matching log entry exists, mark the finding as unexplained and investigate it. Absence of a log entry is not proof that the event did not occur.</p>
-    </section>
-    {limitations.length > 0 && <section className="analysis-section"><h3>Limitations to consider</h3><ul>{limitations.slice(0, 20).map((item: any, i: number) => <li key={i}>{String(item)}</li>)}</ul></section>}
-    <p className="inline-note">Validation status describes the checks returned by the current ML pipeline; it is not independent field verification. Confirm equipment conditions with site telemetry and qualified personnel.</p>
-  </div>;
+function EnergyPerformanceChart({result}:{result:MlAnalysis}) {
+  const e=result.energy||{};
+  const values=[
+    {label:"Forecast",value:e.forecast?.value_kwh??result.forecast_energy,tone:"forecast"},
+    {label:"Expected",value:e.expected?.value_kwh??result.expected_energy,tone:"expected"},
+    {label:"Actual",value:e.actual?.value_kwh??result.actual_energy,tone:"actual"}
+  ].filter(x=>typeof x.value==="number"&&Number.isFinite(x.value)) as Array<{label:string;value:number;tone:string}>;
+  if(!values.length)return <p className="chart-empty">No comparable energy totals were returned.</p>;
+  const max=Math.max(1,...values.map(x=>Math.abs(x.value)));
+  return <div className="visual-chart"><div className="chart-legend">{values.map(x=><span key={x.label}><i className={"legend-"+x.tone}/>{x.label}</span>)}</div>{values.map(x=><div className="hbar-row" key={x.label}><span className="hbar-label">{x.label}</span><div className="hbar-track"><i className={"hbar-fill "+x.tone} style={{width:Math.max(2,Math.abs(x.value)/max*100)+"%"}}/></div><strong>{x.value.toLocaleString(undefined,{maximumFractionDigits:2})} kWh</strong></div>)}<p className="chart-footnote">Source: deterministic ML output. No values are recalculated for this chart.</p></div>;
 }
 
-function AnalysisResponse({ result }: { result: ApiResult }) {
-  const a = result.analysis;
-  const sections: Array<[string, string[] | undefined, string]> = [
-    ["What the readings tell us", a.observations, "No observations were returned."],
-    ["Possible explanations", a.possible_causes, "No supported causes were identified from the supplied information."],
-    ["Evidence considered", a.supporting_evidence, "The model did not identify specific supporting evidence."],
-    ["Recommended checks", a.recommended_checks, "No checks were returned. Review the input data and try again."],
-    ["Limitations and uncertainty", a.limitations, "No limitations were reported by the model."],
+function ValidationBars({checks}:{checks:any[]}) {
+  const rows=[
+    {label:"Passed",n:checks.filter(x=>["pass","passed","success"].includes(String(x.status||"").toLowerCase())).length,tone:"pass"},
+    {label:"Warnings",n:checks.filter(x=>String(x.status||"").toLowerCase()==="warning").length,tone:"warning"},
+    {label:"Failed",n:checks.filter(x=>["fail","failed","error"].includes(String(x.status||"").toLowerCase())).length,tone:"fail"}
   ];
-  return <div className="assistant-response">
-    {result.ml_analysis && <MlAnalysisResponse result={result.ml_analysis}/>}
-    <div className="analysis-topline">
-      <div><div className="eyebrow">ANALYSIS RESPONSE</div><div className="analysis-meta">{result.plant_id || "Solar plant"}{result.model ? " · " + result.model : ""}</div></div>
-      <span className={"confidence-pill " + a.confidence}>{pretty(a.confidence || "insufficient_evidence") + " confidence"}</span>
-    </div>
-    <p className="analysis-summary">{a.summary || "The model did not return a summary."}</p>
-    <div className="analysis-grid">
-      {sections.map(([title,items,fallback]) => <section className="analysis-section" key={title}><h3>{title}</h3><ul>{listOrFallback(items,fallback).map((item,i)=><li key={i}>{pretty(item)}</li>)}</ul></section>)}
-    </div>
-    <p className="inline-note" style={{marginTop:16}}>AI-generated explanation · Verify hypotheses with plant telemetry and qualified operators before taking action.</p>
+  const max=Math.max(1,...rows.map(x=>x.n));
+  return <div className="validation-chart">{rows.map(x=><div className="validation-bar-item" key={x.label}><div className="validation-bar-track"><i className={"validation-bar-fill "+x.tone} style={{height:(x.n/max*100)+"%"}}/></div><b>{x.n}</b><small>{x.label}</small></div>)}</div>;
+}
+
+function MlAnalysisResponse({result}:{result:MlAnalysis}) {
+  const e=result.energy||{},q=result.data_quality||{},w=result.waterfall||{};
+  const anomalies=Array.isArray(result.anomalies)?result.anomalies:[];
+  const hypotheses=Array.isArray(result.hypotheses)?result.hypotheses:[];
+  const evidence=Array.isArray(result.evidence)?result.evidence:[];
+  const limits=Array.isArray(result.limitations)?result.limitations:[];
+  const fmt=(v:unknown)=>typeof v==="number"&&Number.isFinite(v)?v.toLocaleString(undefined,{maximumFractionDigits:2})+" kWh":"Not reported";
+  const facts=[["Rows analysed",result.interval?.row_count??q.rows],["Sampling interval",typeof result.interval?.sampling_interval_seconds==="number"?result.interval.sampling_interval_seconds+" seconds":null],["Devices detected",result.interval?.device_count],["Time zone",result.interval?.timezone||result.request?.timezone],["Coverage begins",result.interval?.start_utc],["Coverage ends",result.interval?.end_utc],["Data quality",q.status]];
+  return <div className="report-ml">
+    <section className="report-section"><div className="section-kicker">01 · DETERMINISTIC ANALYSIS</div><h2>Performance at a glance</h2><p>{result.summary||"Review the measured values and evidence returned by the analysis pipeline."}</p>
+      <div className="report-metrics">{[["Forecast energy",e.forecast?.value_kwh??result.forecast_energy],["Expected energy",e.expected?.value_kwh??result.expected_energy],["Actual energy",e.actual?.value_kwh??result.actual_energy],["Energy deviation",e.deviation?.value_kwh??result.deviation]].map(([label,value])=><article key={String(label)}><small>{label}</small><strong>{fmt(value)}</strong></article>)}</div><EnergyPerformanceChart result={result}/>
+    </section>
+    <section className="report-section"><div className="section-kicker">02 · DATASET PROFILE</div><h2>What was analysed</h2><div className="report-facts">{facts.map(([label,value])=><div key={String(label)}><small>{label}</small><strong>{displayValue(value)}</strong></div>)}</div></section>
+    {Object.keys(w).length>0&&<section className="report-section"><div className="section-kicker">03 · ENERGY BREAKDOWN</div><h2>Energy loss breakdown</h2><div className="detail-list">{Object.entries(w).map(([key,value])=><div className="detail-row" key={key}><span>{pretty(key)}</span><strong>{displayValue(value)}</strong></div>)}</div></section>}
+    <section className="report-section"><div className="section-kicker">04 · FINDINGS</div><h2>Detected anomalies</h2>{anomalies.length?<ul className="readable-list">{anomalies.slice(0,40).map((x:any,i:number)=><li key={i}>{displayValue(x)}</li>)}</ul>:<p>No anomaly records were returned.</p>}{hypotheses.length>0&&<><h3>Possible contributing factors</h3><p className="report-note">These are hypotheses, not confirmed equipment faults.</p><ul className="readable-list">{hypotheses.slice(0,30).map((x:any,i:number)=><li key={i}>{displayValue(x)}</li>)}</ul></>}</section>
+    {evidence.length>0&&<section className="report-section"><div className="section-kicker">05 · SUPPORTING EVIDENCE</div><h2>Evidence returned by the pipeline</h2><ul className="readable-list">{evidence.slice(0,40).map((x:any,i:number)=><li key={i}>{displayValue(x)}</li>)}</ul></section>}
+    {limits.length>0&&<section className="report-section"><div className="section-kicker">06 · LIMITATIONS</div><h2>What this analysis cannot establish</h2><ul className="readable-list">{limits.slice(0,30).map((x:any,i:number)=><li key={i}>{displayValue(x)}</li>)}</ul></section>}
+    {Array.isArray(q.checks)&&q.checks.length>0&&<section className="report-section"><div className="section-kicker">07 · VALIDATION RECORD</div><h2>Checks performed</h2><div className="detail-list">{q.checks.slice(0,50).map((x:any,i:number)=><div className="detail-row" key={x.check_id||i}><span>{pretty(String(x.status||"not reported"))}</span><strong>{displayValue(x.message||x.check_id||x)}</strong></div>)}</div></section>}
+    <p className="report-disclaimer">Decision support only. Verify operational findings against plant telemetry, inverter records and qualified site personnel.</p>
   </div>;
 }
+
+function ValidationLab({result,datasetName}:{result:ApiResult;datasetName:string}) {
+  const ml=result.ml_analysis||{},q=ml.data_quality||{};
+  const checks:any[]=Array.isArray(q.checks)?q.checks:[];
+  const anomalies=Array.isArray(ml.anomalies)?ml.anomalies:[];
+  const hypotheses=Array.isArray(ml.hypotheses)?ml.hypotheses:[];
+  const evidence=Array.isArray(ml.evidence)?ml.evidence:[];
+  const limits=Array.isArray(ml.limitations)?ml.limitations:[];
+  const pass=checks.filter(x=>["pass","passed","success"].includes(String(x.status||"").toLowerCase())).length;
+  const warn=checks.filter(x=>String(x.status||"").toLowerCase()==="warning").length;
+  const fail=checks.filter(x=>["fail","failed","error"].includes(String(x.status||"").toLowerCase())).length;
+  const groups=anomalies.reduce((acc:Record<string,number>,x:any)=>{const key=String(x?.category||x?.type||x?.anomaly_type||"Other finding").replaceAll("_"," ");acc[key]=(acc[key]||0)+1;return acc;},{});
+  return <div className="analysis-card validation-page"><div className="eyebrow">VALIDATION LAB · EVIDENCE REVIEW</div><h2>Why should you trust this result?</h2><p className="analysis-summary">Explore the data-quality checks, evidence and limitations returned by deterministic ML. This is a transparent review of the pipeline, not independent field verification.</p>
+    <div className="validation-intro"><div><span className="section-kicker">ANALYSIS UNDER REVIEW</span><strong>{datasetName}</strong><small>Plant {result.plant_id||"not specified"} · {ml.interval?.row_count??q.rows??"Unknown"} rows inspected</small></div><span className={"status-chip "+(fail?"status-fail":warn?"status-warn":"status-pass")}>{fail?"Review required":warn?"Passed with warnings":"Checks reported"}</span></div>
+    <div className="metric-grid validation-kpis">{[["Checks recorded",checks.length],["Passed",pass],["Warnings",warn],["Failures",fail]].map(([label,value])=><div className="metric-card" key={String(label)}><span>{label}</span><strong>{value}</strong></div>)}</div>
+    <section className="validation-panel"><div className="section-kicker">CHECK OUTCOMES</div><h3>Data-quality validation</h3><p>Number of checks returned for each outcome.</p><ValidationBars checks={checks}/></section>
+    <section className="validation-panel"><div className="section-kicker">CHECK REGISTER</div><h3>What the pipeline checked</h3>{checks.length?<div className="validation-checks">{checks.map((x:any,i:number)=><article key={x.check_id||i}><span className={"check-mark "+String(x.status||"").toLowerCase()}>{["pass","passed","success"].includes(String(x.status||"").toLowerCase())?"✓":String(x.status||"").toLowerCase()==="warning"?"!":"•"}</span><div><strong>{pretty(String(x.check_id||"Validation check"))}</strong><p>{displayValue(x.message||x.description||"Recorded by the ML pipeline.")}</p></div><small>{pretty(String(x.status||"not reported"))}</small></article>)}</div>:<p>No individual checks were returned. Overall data-quality status: <b>{pretty(String(q.status||"not reported"))}</b>.</p>}</section>
+    <section className="validation-panel"><div className="section-kicker">ANOMALY REVIEW</div><h3>Findings by category</h3>{Object.keys(groups).length?<div className="category-bars">{Object.entries(groups).map(([name,count])=><div className="category-row" key={name}><span>{pretty(name)}</span><div><i style={{width:Number(count)/Math.max(1,...Object.values(groups))*100+"%"}}/></div><b>{count}</b></div>)}</div>:<p>No anomaly categories were returned.</p>}{anomalies.length>0&&<ul className="readable-list">{anomalies.slice(0,30).map((x:any,i:number)=><li key={i}>{displayValue(x)}</li>)}</ul>}</section>
+    {hypotheses.length>0&&<section className="validation-panel"><h3>Possible contributing factors</h3><p className="report-note">Hypotheses are not confirmed faults.</p><ul className="readable-list">{hypotheses.slice(0,20).map((x:any,i:number)=><li key={i}>{displayValue(x)}</li>)}</ul></section>}
+    {evidence.length>0&&<section className="validation-panel"><h3>Supporting observations</h3><ul className="readable-list">{evidence.slice(0,30).map((x:any,i:number)=><li key={i}>{displayValue(x)}</li>)}</ul></section>}
+    {limits.length>0&&<section className="validation-panel"><h3>Limitations and uncertainty</h3><ul className="readable-list">{limits.slice(0,20).map((x:any,i:number)=><li key={i}>{displayValue(x)}</li>)}</ul></section>}
+    <div className="validation-caution"><strong>Operational verification still matters.</strong><p>Compare timestamps and devices with inverter alarms, maintenance records and site logs. A model hypothesis is not proof of an equipment fault.</p></div>
+  </div>;
+}
+
+function AnalysisResponse({result}:{result:ApiResult}) {
+  const a=result.analysis;
+  const sections:Array<[string,string[]|undefined,string]>=[
+    ["What the readings tell us",a.observations,"No observations were returned."],
+    ["Possible explanations",a.possible_causes,"No supported causes were identified."],
+    ["Evidence considered",a.supporting_evidence,"No specific supporting evidence was identified."],
+    ["Recommended checks",a.recommended_checks,"No checks were returned."],
+    ["Limitations and uncertainty",a.limitations,"No limitations were reported."]
+  ];
+  return <div className="assistant-response"><div className="assistant-answer-heading"><span className="assistant-mark">✳</span><div><strong>SolarSleuth analysis</strong><small>Evidence-grounded explanation · {pretty(a.confidence||"insufficient_evidence")} confidence</small></div></div><p className="analysis-summary">{a.summary||"The model did not return a summary."}</p><div className="answer-sections">{sections.map(([title,items,fallback],i)=><section className="answer-section" key={title}><h3><span>{["◉","⌁","↗","✓","ⓘ"][i]}</span>{title}</h3><ul>{listOrFallback(items,fallback).map((x,j)=><li key={j}>{displayValue(x)}</li>)}</ul></section>)}</div><p className="inline-note">AI-generated explanation · Verify hypotheses with plant telemetry and qualified operators.</p></div>;
+}
+
+function OverviewDashboard({history,plants,selectedPlantId,onPlantChange,onNavigate}:{history:Turn[];plants:Plant[];selectedPlantId:string;onPlantChange:(id:string)=>void;onNavigate:(page:"data"|"report"|"validation"|"assistant")=>void}) {
+  const latest=history.filter(x=>x.result).slice(-1)[0],ml=latest?.result?.ml_analysis||{},e=ml.energy||{},q=ml.data_quality||{};
+  const anomalies=Array.isArray(ml.anomalies)?ml.anomalies:[];
+  const plant=plants.find(x=>x.plant_id===selectedPlantId);
+  const metric=(v:unknown)=>typeof v==="number"&&Number.isFinite(v)?v.toLocaleString(undefined,{maximumFractionDigits:2})+" kWh":"Not reported";
+  return <div className="overview-page"><div className="overview-welcome"><div><div className="eyebrow">SOLAR ASSET PERFORMANCE</div><h2>{plant?.name||"Plant overview"}</h2><p>{plant?.location||"Select a plant to review its latest performance."}</p></div><span className="ov-badge">{latest?"LATEST ANALYSIS":"AWAITING DATA"}</span></div>
+    <div className="overview-toolbar"><label htmlFor="overviewPlant">Selected plant</label><select id="overviewPlant" value={selectedPlantId} onChange={e=>onPlantChange(e.target.value)}><option value="">Choose a registered plant</option>{plants.map(x=><option key={x.plant_id} value={x.plant_id}>{x.name}</option>)}</select><span>{history.length} saved report{history.length===1?"":"s"}</span></div>
+    {!latest?<div className="analysis-card analysis-empty"><div className="empty-icon">☼</div><h3>No analysis for this plant yet</h3><p>Upload an operating dataset and select this plant to see its performance here.</p><button className="primary-action" onClick={()=>onNavigate("data")}>Upload plant data ↗</button></div>:<>
+      <div className="overview-kpis">{[["Actual energy",metric(e.actual?.value_kwh??ml.actual_energy),"Measured by deterministic ML"],["Expected energy",metric(e.expected?.value_kwh??ml.expected_energy),"Reference from the analysis"],["Energy deviation",metric(e.deviation?.value_kwh??ml.deviation),"Returned by the ML service"],["Data quality",pretty(String(q.status||"not reported")),(q.rows??ml.interval?.row_count??"—")+" rows inspected"]].map(([label,value,note])=><article className="overview-kpi" key={String(label)}><small>{label}</small><strong>{value}</strong><span>{note}</span></article>)}</div>
+      <div className="overview-columns"><section className="analysis-card overview-panel"><div className="section-kicker">ENERGY PERFORMANCE</div><h3>Expected versus actual</h3><EnergyPerformanceChart result={ml}/></section><section className="analysis-card overview-panel"><div className="section-kicker">PLANT SIGNALS</div><h3>What needs attention</h3><div className="signal-stat"><strong>{anomalies.length}</strong><span>anomaly records returned</span></div>{anomalies.slice(0,3).map((x:any,i:number)=><div className="signal-row" key={i}><span>{"0"+(i+1)}</span><p>{displayValue(x)}</p></div>)}{!anomalies.length&&<p className="report-note">No anomaly records were returned.</p>}</section></div>
+      <div className="overview-lower"><div><span className="section-kicker">LATEST DATASET</span><strong>{latest.question.replace("Dataset analysis: ","")}</strong><small>{new Date(latest.createdAt).toLocaleString()} · {ml.interval?.row_count??"—"} rows</small></div><div className="overview-actions"><button className="btn btn-ghost" onClick={()=>onNavigate("report")}>Open report</button><button className="btn btn-ghost" onClick={()=>onNavigate("validation")}>Review validation</button><button className="btn btn-primary" onClick={()=>onNavigate("assistant")}>Ask AI ↗</button></div></div>
+    </>}
+  </div>;
+}
+
 
 export default function App() {
   const [apiBase, setApiBase] = useState(getApiBase);
@@ -383,7 +387,7 @@ export default function App() {
     if(uploadInterval.trim())form.append("interval_minutes",uploadInterval.trim());
     if(uploadSheet.trim())form.append("sheet_name",uploadSheet.trim());
     const id=Date.now().toString(36)+Math.random().toString(36).slice(2,7);
-    setError("");setBusy(true);setUploadStage("running");setPage("assistant");
+    setError("");setBusy(true);setUploadStage("running");setPage("overview");
     setTurns(old=>[...old,{id,question:`Dataset analysis: ${datasetFile.name}`,createdAt:Date.now(),loading:true}]);
     try{
       const response=await fetch(apiBase+"/api/v1/analyze/upload",{method:"POST",headers:{Authorization:"Bearer "+accessToken},body:form,signal:AbortSignal.timeout(540000)});
@@ -394,7 +398,7 @@ export default function App() {
       setUploadStage("complete");
       const savedId=raw.request_id||id;
       setTurns(old=>old.map(t=>t.id===id?{...t,id:savedId,loading:false,result:raw}:t));
-      setSelectedTurnId(savedId);
+      setSelectedTurnId(savedId);setDashboardPlantId(plantId.trim()||dashboardPlantId);setPlantHistory(old=>[...old.filter(t=>t.id!==savedId),{id:savedId,question:"Dataset analysis: "+datasetFile.name,createdAt:Date.now(),result:raw}]);setPage("overview");
     }catch(err){
       const msg=err instanceof Error?err.message:"Unable to complete dataset analysis.";
       setUploadStage("failed");
@@ -422,8 +426,9 @@ export default function App() {
     } finally { setChatBusy(false); }
   };
   const statusText=ready==="ready"?"ML + local AI ready":ready==="warming"?"ML connected · local AI model warming up":ready==="checking"?"Checking backend, ML and AI services":"Backend or a dependent service unavailable";
-  const nav=[{id:"overview" as const,label:"Overview",icon:"◫"},{id:"plants" as const,label:"Plants",icon:"⌂"},{id:"data" as const,label:"Upload & analyse",icon:"⇧"},{id:"validation" as const,label:"Validation Lab",icon:"✓"},{id:"report" as const,label:"Reports",icon:"▤"},{id:"assistant" as const,label:"AI explanation",icon:"✳"}];
-  const latestTurn = turns.find(t=>t.id===selectedTurnId && t.result) || turns.filter(t=>t.result).slice(-1)[0];
+  const nav=[{id:"overview" as const,label:"Overview",icon:"◫"},{id:"plants" as const,label:"Plants",icon:"⌂"},{id:"data" as const,label:"Upload & analyse",icon:"⇧"},{id:"validation" as const,label:"Validation Lab",icon:"✓"},{id:"report" as const,label:"Reports",icon:"▤"},{id:"assistant" as const,label:"AI Assistant",icon:"✳"}];
+  const plantScopedTurns = turns.filter(t=>t.result && (!dashboardPlantId || t.result.plant_id===dashboardPlantId));
+  const latestTurn = plantScopedTurns.find(t=>t.id===selectedTurnId) || plantScopedTurns.slice(-1)[0];
   const compareLeft = plantHistory.find(t => t.id === compareLeftId);
   const compareRight = plantHistory.find(t => t.id === compareRightId);
   const comparisonMetrics = [{ key: "forecast", label: "Forecast energy" }, { key: "expected", label: "Expected energy" }, { key: "actual", label: "Actual energy" }, { key: "deviation", label: "Deviation" }];
@@ -439,10 +444,9 @@ export default function App() {
     </section> : <>
       <header className="topbar"><a className="brand" href="#home" onClick={e=>{e.preventDefault();setPage("overview")}}><BrandMark/><span className="brand-copy"><b>SolarSleuth</b><small>Performance intelligence</small></span></a><div className="topbar-right"><span className="environment-pill"><span className="status-dot"></span>{statusText}</span><button className="icon-btn theme-toggle" onClick={()=>setTheme(theme==="dark"?"light":"dark")} aria-label="Toggle theme"><span className="theme-symbol">{theme==="dark"?"☾":"☼"}</span></button><div className="avatar-wrap"><button className="avatar-btn" title="Account menu" aria-expanded={menuOpen} onClick={()=>setMenuOpen(v=>!v)}>{userName.charAt(0)}</button><div className={"user-menu "+(menuOpen?"":"hide")}><div className="um-name">{userName}</div><div className="um-email">{businessName||email}</div><button className="um-out" onClick={()=>{setMenuOpen(false);logout()}}>Sign out</button></div></div></div></header>
       <div className="app-shell"><aside className="sidebar"><div className="sidebar-label">WORKSPACE</div><nav className="side-nav">{nav.map(n=><button key={n.id} className={page===n.id?"on":""} onClick={()=>setPage(n.id)}><span>{n.icon}</span>{n.label}</button>)}</nav><div className="sidebar-bottom"><div className="sidebar-mini-icon">✳</div><div><b>{userName}</b><small>{businessName||email}</small></div><span className="live-dot"></span></div></aside>
-      <main className="workspace"><div className="workspace-head"><div><div className="breadcrumb">WORKSPACE <span>/</span> <b>{nav.find(n=>n.id===page)?.label}</b></div><h1>{page==="overview"?"Plant overview":page==="data"?"Upload & analyse":page==="validation"?"Validation Lab":page==="report"?"Reports":page==="plants"?"Plants & performance":"AI explanation"}</h1><p>{page==="overview"?"A file-driven view of your latest analysis and local service readiness.":page==="data"?"Upload a CSV or Excel workbook for validation, deterministic analysis, and AI explanation.":page==="validation"?"Inspect data-quality checks, ML evidence and findings that need operational verification.":page==="report"?"Review and print the latest dataset-derived report.":page==="plants"?"Manage plants, inspect their saved analysis history and compare ML reports.":"Read the detailed explanation generated from the latest uploaded dataset."}</p></div><div className="head-actions"><span className="plant-select-label">LATEST UPLOAD</span><div className="plant-select"><span className="plant-icon">☼</span><span><b>{turns.filter(t=>t.result).slice(-1)[0]?.question.replace("Dataset analysis: ","") || "No dataset analysed"}</b><small>{turns.filter(t=>t.result).length} successful analysis result(s)</small></span></div></div></div>
+      <main className="workspace"><div className="workspace-head"><div><div className="breadcrumb">WORKSPACE <span>/</span> <b>{nav.find(n=>n.id===page)?.label}</b></div><h1>{page==="overview"?"Plant overview":page==="data"?"Upload & analyse":page==="validation"?"Validation Lab":page==="report"?"Reports":page==="plants"?"Plants & performance":"AI Assistant"}</h1><p>{page==="overview"?"A file-driven view of your latest analysis and local service readiness.":page==="data"?"Upload a CSV or Excel workbook for validation, deterministic analysis, and AI explanation.":page==="validation"?"Inspect data-quality checks, ML evidence and findings that need operational verification.":page==="report"?"Review and print the latest dataset-derived report.":page==="plants"?"Manage plants, inspect their saved analysis history and compare ML reports.":"Chat with the local AI about the selected plant and its saved analysis."}</p></div><div className="head-actions"><span className="plant-select-label">LATEST UPLOAD</span><div className="plant-select"><span className="plant-icon">☼</span><span><b>{turns.filter(t=>t.result).slice(-1)[0]?.question.replace("Dataset analysis: ","") || "No dataset analysed"}</b><small>{turns.filter(t=>t.result).length} successful analysis result(s)</small></span></div></div></div>
       <section className="controls-panel"><div><label>Service status</label><div className="engine-status"><span className={"status-dot "+(ready==="ready"?"":"")}></span>{statusText}</div><small className="service-breakdown">ML API: {serviceChecks.ml?"reachable":"unavailable"} · LLM API: {serviceChecks.llm?"reachable":"unavailable"} · Model: {serviceChecks.model?"loaded":"not loaded"}</small></div><div><label>Backend API</label><input aria-label="Backend API URL" value={customApi} onChange={e=>setCustomApi(e.target.value)} style={{maxWidth:280}}/></div><button className="small-action" onClick={()=>{const b=customApi.trim().replace(/\/$/,"");if(b){setApiBase(b);try{localStorage.setItem("solarsleuth_api_base",b)}catch{}setReady("checking");setTimeout(()=>void checkReady(),50)}}}>Connect</button></section>
-      {page==="overview"&&<div className="analysis-card"><div className="eyebrow">FILE-DRIVEN SOLAR INTELLIGENCE</div><h2>{turns.some(t=>t.result)?"Latest plant analysis":"Start with your plant data"}</h2><p className="analysis-summary">{turns.some(t=>t.result)?"Your latest report is based on the uploaded dataset and deterministic ML output. Open Reports to review or save it.":"Upload a CSV or Excel workbook. SolarSleuth validates the file, maps supported columns, runs deterministic analysis, and asks the local AI model to explain the evidence."}</p><div className="metric-grid"><div className="metric-card"><span>Successful analyses</span><strong>{turns.filter(t=>t.result).length}</strong></div><div className="metric-card"><span>Service connection</span><strong>{ready==="ready"?"Ready":ready==="warming"?"Warming up":ready==="checking"?"Checking":"Unavailable"}</strong></div><div className="metric-card"><span>Latest dataset</span><strong>{turns.filter(t=>t.result).length? "Processed":"Not uploaded"}</strong></div></div><button className="primary-action" onClick={()=>setPage("data")}>Upload plant data ↗</button></div>}
-
+      {page==="overview"&&<>{busy&&<p className="pipeline-status" role="status"><span className="inline-spinner" aria-hidden="true"/> Analysing the selected plant data. The deterministic ML pipeline and local explanation service are working.</p>}{error&&<div className="inline-error" role="alert">{error}</div>}<OverviewDashboard history={dashboardPlantId?plantHistory:[]} plants={plants} selectedPlantId={dashboardPlantId} onPlantChange={(id)=>{setDashboardPlantId(id);const matches=turns.filter(t=>t.result&&t.result.plant_id===id);setSelectedTurnId(matches[matches.length-1]?.id||"");}} onNavigate={setPage}/></>} 
       {page==="plants"&&<div className="analysis-card"><div className="eyebrow">ASSET MANAGEMENT · WORKSPACE</div><h2>Plant directory & performance</h2><p className="analysis-summary">Manage registered plants, inspect each plant's saved analysis history and compare two reports using only metrics returned by deterministic ML.</p>
         {plants.length > 0 && <section className="dataset-profile" style={{marginBottom:22}}>
           <div className="dataset-profile-head"><h4>Plant performance dashboard</h4><span>Business workspace · plant-scoped history</span></div>
@@ -472,14 +476,25 @@ export default function App() {
       {page==="data"&&<div className="analysis-card"><div className="eyebrow">DATA INGESTION · CSV / XLSX</div><h2>Upload plant operating data</h2><p className="analysis-summary">The backend sends the file to the deterministic ML service first. Only its structured analysis is passed to the local LLM for explanation.</p><form onSubmit={uploadDataset} className="field-grid"><div className={"field-card upload-dropzone "+(dragActive?"drag-active":"")} style={{gridColumn:"1 / -1"}} onDragOver={e=>{e.preventDefault();setDragActive(true)}} onDragLeave={e=>{e.preventDefault();setDragActive(false)}} onDrop={e=>{e.preventDefault();setDragActive(false);const file=e.dataTransfer.files?.[0];if(file){setDatasetFile(file);setError("");setUploadStage("idle");}}}><label htmlFor="datasetFile">Operating data file</label><input id="datasetFile" type="file" accept=".csv,.xlsx" onChange={e=>{setDatasetFile(e.target.files?.[0]||null);setError("");setUploadStage("idle");}} required/><small>Drop a CSV or XLSX here, or choose a file · Maximum 25 MiB · One operating-data file per request</small>{datasetFile&&<div className="selected-file"><strong>{datasetFile.name}</strong><span>{(datasetFile.size/1024/1024).toFixed(2)} MiB</span><button type="button" className="small-action" onClick={()=>{setDatasetFile(null);setUploadStage("idle");}}>Remove</button></div>}</div>
 <div className="field-card"><label htmlFor="plantId">Registered plant</label>{plants.length>0?<select id="plantId" value={plantId} onChange={e=>{setPlantId(e.target.value);const selected=plants.find(p=>p.plant_id===e.target.value);if(selected?.timezone)setUploadTimezone(selected.timezone)}}>{plants.map(plant=><option key={plant.plant_id} value={plant.plant_id}>{plant.name} · {plant.plant_id}</option>)}</select>:<><input id="plantId" value={plantId} maxLength={128} onChange={e=>setPlantId(e.target.value)} placeholder="Enter a plant identifier"/><small>No registered plants yet. Add one in Plant directory, or enter an identifier for legacy reports.</small></>}<small>Plant metadata is associated with this report; measurements always come from the uploaded file.</small></div><div className="field-card"><label htmlFor="uploadMode">Analysis mode</label><select id="uploadMode" value={uploadMode} onChange={e=>setUploadMode(e.target.value)}><option value="auto">Automatic</option><option value="snapshot">Snapshot</option><option value="full">Full time-series</option></select></div><div className="field-card"><label htmlFor="uploadTimezone">IANA timezone (optional)</label><input id="uploadTimezone" value={uploadTimezone} onChange={e=>setUploadTimezone(e.target.value)} placeholder="Asia/Kolkata"/></div><div className="field-card"><label htmlFor="uploadInterval">Interval minutes (optional)</label><input id="uploadInterval" type="number" min="0.01" step="any" value={uploadInterval} onChange={e=>setUploadInterval(e.target.value)} placeholder="Auto-detect"/></div><div className="field-card"><label htmlFor="uploadSheet">Excel sheet name (optional)</label><input id="uploadSheet" value={uploadSheet} onChange={e=>setUploadSheet(e.target.value)} placeholder="First sheet by default"/></div><div style={{gridColumn:"1 / -1"}}><button className="primary-action" type="submit" disabled={busy||!datasetFile}>{busy?<><span className="inline-spinner" aria-hidden="true"/> Analysing dataset…</>:"Upload and analyse ↗"}</button>{error&&<div className="inline-error" role="alert">{error}</div>}{uploadStage==="running"&&<p className="pipeline-status" role="status">Your file has been sent to the backend. Validation, deterministic ML analysis and local AI explanation are running in sequence.</p>}{uploadStage==="complete"&&<p className="pipeline-status success" role="status">Analysis completed. Review the ML evidence and AI explanation.</p>}{uploadStage==="failed"&&<p className="pipeline-status failed" role="status">The analysis could not be completed. Review the error above and retry when the services are ready.</p>}</div></form><p className="inline-note" style={{marginTop:14}}>The current HTTP integration accepts one operating-data file. The ML Python pipeline supports additional context inputs, but multi-file weather/device/forecast/event-log upload is not yet exposed here.</p><p className="inline-note">SolarSleuth is file-first: plant readings are never entered manually in the application.</p></div>}
       {page==="validation"&&(latestTurn?.result?.ml_analysis ? <ValidationLab result={latestTurn.result} datasetName={latestTurn.question.replace("Dataset analysis: ","")}/> : <div className="analysis-card analysis-empty"><div className="empty-icon">✓</div><h3>No analysis to validate yet</h3><p>Upload a CSV or Excel workbook first. The Validation Lab will show the data-quality checks and evidence returned by the deterministic ML service.</p><button className="primary-action" onClick={()=>setPage("data")}>Upload plant data ↗</button></div>)}
-      {page==="report"&&<div className="analysis-card report"><div className="analysis-topline noprint"><div><div className="eyebrow">REPORT</div><h2>Latest analysis report</h2><p className="analysis-meta">Generated from the latest successful uploaded-dataset analysis.</p></div><button className="small-action" onClick={()=>window.print()} disabled={!turns.some(t=>t.result)}>Print / Save PDF</button></div>{turns.filter(t=>t.result).map(t=><button key={t.id} type="button" className="small-action" style={{margin:"0 8px 12px 0"}} onClick={()=>setSelectedTurnId(t.id)}>{t.question.replace("Dataset analysis: ","")} · {new Date(t.createdAt).toLocaleDateString()}</button>)}{turns.filter(t=>t.result&&t.id===latestTurn?.id).map(t=><div key={t.id} className="report-content"><div className="report-heading"><div className="eyebrow">SOLARSLEUTH · SOLAR PERFORMANCE INTELLIGENCE</div><h1>Plant performance analysis</h1><p>Dataset: {t.question.replace("Dataset analysis: ","")}</p><p>Generated: {new Date(t.createdAt).toLocaleString()}</p><p>Plant: {t.result!.plant_id || "Not specified"} · Mode: {t.result!.analysis_mode || "Not specified"}</p><p>Request ID: {t.result!.request_id || "Not provided"}</p></div><h3>Executive analysis</h3><AnalysisResponse result={t.result!}/></div>)}{!turns.some(t=>t.result)&&<div className="analysis-empty"><p>No successful analysis is available yet.</p><button className="primary-action" onClick={()=>setPage("data")}>Run an analysis ↗</button></div>}</div>}
-      {page==="assistant"&&<><div className="analysis-card"><div className="analysis-topline"><div><div className="eyebrow">LOCAL MODEL · QWEN</div><h2>AI explanation</h2><p className="analysis-meta">Detailed explanations are generated from the deterministic ML result returned by your uploaded dataset.</p></div><span className="analysis-meta">Saved workspace history</span></div><p className="analysis-meta">Ask questions about the selected saved report. Answers use its deterministic ML evidence; numerical results remain unchanged.</p>
-      {turns.filter(t=>t.result).length>0&&<div className="field-card" style={{marginTop:14}}><label htmlFor="chatReport">Report in context</label><select id="chatReport" value={latestTurn?.id||""} onChange={e=>setSelectedTurnId(e.target.value)}>{turns.filter(t=>t.result).map(t=><option key={t.id} value={t.id}>{t.question.replace("Dataset analysis: ","")} · {new Date(t.createdAt).toLocaleDateString()}</option>)}</select></div>}{uploadStage==="running"&&<div className="pipeline-status" role="status"><span className="inline-spinner" aria-hidden="true"/> Processing upload → deterministic ML analysis → local AI explanation. Keep the services running.</div>}{uploadStage==="complete"&&<div className="pipeline-status success" role="status">Analysis completed successfully. The ML result and AI explanation are shown below.</div>}{uploadStage==="failed"&&<div className="pipeline-status failed" role="status">Analysis failed. See the message in the latest request below, then retry from Upload & analyse.</div>}</div><div className="assistant-history" style={{marginTop:18}}>
-      {!latestTurn?.result&&<div className="analysis-card analysis-empty"><div className="empty-icon">✳</div><h3>No saved analysis selected</h3><p>Upload a plant dataset or select a saved report to ask evidence-based follow-up questions.</p><button className="primary-action" onClick={()=>setPage("data")}>Upload a dataset ↗</button></div>}
-      {latestTurn?.result&&<div className="assistant-turn"><div className="user-question">{latestTurn.question}</div><div className="assistant-label"><span className="chat-avatar">✳</span>SolarSleuth · original analysis</div><AnalysisResponse result={latestTurn.result}/></div>}
-      {chatMessages.map((message,index)=><div className="assistant-turn" key={message.created_at||index}><div className={message.role==="user"?"user-question":"assistant-label"}>{message.role==="user"?"You":<><span className="chat-avatar">✳</span>SolarSleuth · grounded follow-up</>}</div>{message.role==="assistant"&&typeof message.content!=="string"?<AnalysisResponse result={{analysis:message.content as Analysis,plant_id:latestTurn?.result?.plant_id}}/>:<div className="assistant-response"><p>{typeof message.content==="string"?message.content:JSON.stringify(message.content)}</p></div>}</div>)}
-      {latestTurn?.result&&<form className="field-grid" onSubmit={sendFollowUp} style={{marginTop:18}}><div className="field-card" style={{gridColumn:"1 / -1"}}><label htmlFor="followUpQuestion">Ask about this analysis</label><textarea id="followUpQuestion" rows={3} maxLength={2000} value={chatInput} onChange={e=>setChatInput(e.target.value)} placeholder="e.g. Which evidence supports the possible soiling explanation?" disabled={chatBusy}/><small>Up to 2,000 characters. The assistant can only use evidence in this saved report and recent conversation.</small></div><div style={{gridColumn:"1 / -1"}}><button className="primary-action" type="submit" disabled={chatBusy||!chatInput.trim()}>{chatBusy?"Thinking…":"Ask follow-up ↗"}</button>{chatError&&<div className="inline-error" role="alert">{chatError}</div>}</div></form>}
-    </div></>}
+
+      {page==="report"&&<div className="analysis-card report report-shell"><div className="report-toolbar noprint"><div><div className="eyebrow">ANALYST REPORT</div><h2>Plant performance report</h2><p>Select a saved analysis to inspect the full evidence trail.</p></div><button className="primary-action" type="button" onClick={()=>window.print()} disabled={!latestTurn?.result}>Export PDF ↓</button></div><p className="report-export-hint noprint">Your browser will open the print dialog. Choose “Save as PDF” to download the report.</p>
+        <div className="report-picker noprint">{turns.filter(t=>t.result&&(!dashboardPlantId||t.result.plant_id===dashboardPlantId)).map(t=><button key={t.id} type="button" className={t.id===latestTurn?.id?"selected":""} onClick={()=>setSelectedTurnId(t.id)}>{t.question.replace("Dataset analysis: ","")}<small>{new Date(t.createdAt).toLocaleDateString()}</small></button>)}</div>
+        {latestTurn?.result?<div className="report-content"><header className="report-cover"><div className="eyebrow">SOLARSLEUTH · SOLAR PERFORMANCE INTELLIGENCE</div><h1>Plant performance analysis</h1><p>{latestTurn.question.replace("Dataset analysis: ","")}</p><div className="report-cover-meta"><span>Plant · {latestTurn.result.plant_id||"Not specified"}</span><span>Generated · {new Date(latestTurn.createdAt).toLocaleString()}</span><span>Analysis mode · {latestTurn.result.analysis_mode||"Automatic"}</span></div></header><MlAnalysisResponse result={latestTurn.result.ml_analysis||{}}/><section className="report-section"><div className="section-kicker">08 · AI EXPLANATION</div><h2>Analyst interpretation</h2><AnalysisResponse result={latestTurn.result}/></section></div>:<div className="analysis-empty"><p>No successful analysis is available yet.</p><button className="primary-action" onClick={()=>setPage("data")}>Run an analysis ↗</button></div>}
+      </div>}
+
+      {page==="assistant"&&<div className="chat-workspace">
+        <header className="chat-workspace-head"><div><div className="eyebrow">PLANT-SCOPED AI ASSISTANT</div><h2>Ask SolarSleuth</h2><p>Answers are grounded in the selected plant's saved analysis. Measurements are never invented or recalculated.</p></div><div className="chat-context"><label htmlFor="chatReport">Analysis context</label><select id="chatReport" value={latestTurn?.id||""} onChange={e=>setSelectedTurnId(e.target.value)}><option value="">Select a saved analysis</option>{turns.filter(t=>t.result&&(!dashboardPlantId||t.result.plant_id===dashboardPlantId)).map(t=><option key={t.id} value={t.id}>{t.question.replace("Dataset analysis: ","")} · {new Date(t.createdAt).toLocaleDateString()}</option>)}</select></div></header>
+        {!latestTurn?.result?<div className="chat-empty"><span className="chat-empty-mark">✳</span><h3>Choose an analysis to start</h3><p>Select a plant and one of its saved reports. Your conversation stays tied to that evidence.</p></div>:<>
+          <div className="chat-context-note"><span className="live-dot"/> In context: <strong>{plants.find(p=>p.plant_id===latestTurn.result?.plant_id)?.name||latestTurn.result.plant_id||"Selected plant"}</strong><span>·</span>{latestTurn.question.replace("Dataset analysis: ","")}</div>
+          <div className="chat-thread" aria-live="polite">
+            {chatMessages.length===0&&<div className="chat-welcome"><span className="assistant-mark">✳</span><div><strong>SolarSleuth</strong><p>I've got the selected plant analysis in context. Ask me to explain a deviation, trace evidence behind a finding, or suggest what to verify next.</p><div className="chat-prompts">{["What is driving the energy deviation?","Which findings have the strongest evidence?","What should the site operator check first?"].map(question=><button key={question} type="button" onClick={()=>setChatInput(question)}>{question}<span>↗</span></button>)}</div></div></div>}
+            {chatMessages.map((message,index)=><article className={"chat-turn "+message.role} key={message.created_at||index}>{message.role==="assistant"&&<span className="assistant-mark">✳</span>}<div className="chat-bubble">{message.role==="user"?<p>{typeof message.content==="string"?message.content:displayValue(message.content)}</p>:typeof message.content==="string"?<p className="chat-answer-text">{message.content}</p>:<AnalysisResponse result={{analysis:message.content as Analysis,plant_id:latestTurn.result?.plant_id}}/>}</div></article>)}
+            {chatBusy&&<article className="chat-turn assistant"><span className="assistant-mark">✳</span><div className="typing-bubble"><i/><i/><i/><span>Reviewing plant evidence</span></div></article>}
+          </div>
+          <form className="chat-composer" onSubmit={sendFollowUp}><textarea aria-label="Ask a question about this plant" rows={1} maxLength={2000} value={chatInput} onChange={e=>setChatInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();void sendFollowUp(e as any)}}} placeholder="Ask anything about this plant's analysis…" disabled={chatBusy}/><button type="submit" aria-label="Send message" disabled={chatBusy||!chatInput.trim()}>↑</button><small>Enter to send · Shift + Enter for a new line</small></form>
+          {chatError&&<div className="inline-error" role="alert">{chatError}</div>}
+        </>}
+      </div>}
       </main></div><footer className="app-footer">SolarSleuth is a prototype. Confirm model hypotheses against real telemetry and qualified operator checks. Account access uses expiring backend-issued tokens.</footer>
     </>}
   </>;
