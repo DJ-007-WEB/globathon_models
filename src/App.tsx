@@ -14,7 +14,6 @@ type ApiResult = { request_id?: string | null; plant_id?: string; model?: string
 type Turn = { id: string; question: string; createdAt: number; result?: ApiResult; error?: string; loading?: boolean };
 
 const DEFAULT_API = "http://127.0.0.1:8001";
-async function hashPassword(password: string, salt: string) { const bytes=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(salt+":"+password)); return [...new Uint8Array(bytes)].map(b=>b.toString(16).padStart(2,"0")).join(""); }
 const getApiBase = () => {
   try {
     const params = new URLSearchParams(window.location.search);
@@ -148,7 +147,9 @@ export default function App() {
   const [authed, setAuthed] = useState(false);
   const [userName, setUserName] = useState("Demo Analyst");
   const [email, setEmail] = useState("demo@solarsleuth.app");
-  const [password, setPassword] = useState("Demo@1234");
+  const [password, setPassword] = useState("");
+  const [businessName, setBusinessName] = useState("");
+  const [accessToken, setAccessToken] = useState("");
   const [authMode, setAuthMode] = useState<"signin"|"signup">("signin");
   const [fullName, setFullName] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -169,7 +170,17 @@ export default function App() {
   const [uploadSheet, setUploadSheet] = useState("");
 
   useEffect(() => {
-    try { const t=localStorage.getItem("solarsleuth_theme"); if(t==="light"||t==="dark")setTheme(t); const s=localStorage.getItem("solarsleuth_demo_session"); if(s){const u=JSON.parse(s);setAuthed(true);setUserName(u.name||"Demo Analyst");setEmail(u.email||"demo@solarsleuth.app");} } catch {}
+    try {
+      const t=localStorage.getItem("solarsleuth_theme"); if(t==="light"||t==="dark")setTheme(t);
+      const token=localStorage.getItem("solarsleuth_access_token");
+      if(token){
+        setAccessToken(token);
+        fetch(getApiBase()+"/api/v1/auth/me",{headers:{Authorization:"Bearer "+token}})
+          .then(async response=>{if(!response.ok)throw new Error("Session expired");return response.json();})
+          .then(user=>{setAuthed(true);setUserName(user.name);setEmail(user.email);setBusinessName(user.business_name||"");})
+          .catch(()=>{localStorage.removeItem("solarsleuth_access_token");setAccessToken("");});
+      }
+    } catch {}
   }, []);
   useEffect(() => { document.documentElement.dataset.theme=theme; try{localStorage.setItem("solarsleuth_theme",theme)}catch{} },[theme]);
   const checkReady = useCallback(async () => {
@@ -182,38 +193,37 @@ export default function App() {
   const login = async (e: FormEvent) => {
     e.preventDefault(); setAuthError("");
     const cleanEmail=email.trim().toLowerCase();
-    let signedInName = "Demo Analyst";
+    if(!cleanEmail||!password){setAuthError("Enter your email and password.");return;}
     if(authMode==="signup"){
       if(fullName.trim().length<2){setAuthError("Enter your name (at least 2 characters).");return;}
-      if(!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]{2,}$/.test(cleanEmail)){setAuthError("Enter a valid email address.");return;}
-      if(cleanEmail==="demo@solarsleuth.app"){setAuthError("That email is reserved for the demo account.");return;}
-      if(password.length<8||!/[A-Za-z]/.test(password)||!/\\d/.test(password)){setAuthError("Use at least 8 characters with a letter and a number.");return;}
+      if(businessName.trim().length<2){setAuthError("Enter your business or organisation name.");return;}
+      if(password.length<10||password.length>128){setAuthError("Use a password between 10 and 128 characters.");return;}
       if(password!==confirmPassword){setAuthError("The passwords do not match.");return;}
-      try{
-        const users=JSON.parse(localStorage.getItem("solarsleuth_users")||"{}");
-        if(users[cleanEmail]){setAuthError("An account with this email already exists. Sign in instead.");return;}
-        const salt=Math.random().toString(36).slice(2)+Date.now().toString(36);
-        users[cleanEmail]={name:fullName.trim(),salt,hash:await hashPassword(password,salt)};
-        localStorage.setItem("solarsleuth_users",JSON.stringify(users));
-        setUserName(fullName.trim()); signedInName=fullName.trim();
-      }catch{setAuthError("This browser could not save the account. Try the demo login.");return;}
-    } else {
-      if(!cleanEmail||!password){setAuthError("Enter your email and password.");return;}
-      if(cleanEmail==="demo@solarsleuth.app"&&password==="Demo@1234"){setUserName("Demo Analyst");signedInName="Demo Analyst";}
-      else{
-        try{
-          const users=JSON.parse(localStorage.getItem("solarsleuth_users")||"{}");
-          const u=users[cleanEmail];
-          if(!u||await hashPassword(password,u.salt)!==u.hash){setAuthError("Incorrect email or password.");return;}
-          setUserName(u.name); signedInName=u.name;
-        }catch{setAuthError("Unable to read this browser's demo account.");return;}
-      }
     }
-    setAuthed(true);
-    try{localStorage.setItem("solarsleuth_demo_session",JSON.stringify({name:signedInName,email:cleanEmail,at:Date.now()}))}catch{}
-    setShowAuth(false);setPage("overview");
+    try{
+      const response=await fetch(apiBase+(authMode==="signup"?"/api/v1/auth/register":"/api/v1/auth/login"),{
+        method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify(authMode==="signup"
+          ?{email:cleanEmail,password,name:fullName.trim(),business_name:businessName.trim()}
+          :{email:cleanEmail,password}),
+        signal:AbortSignal.timeout(15000)
+      });
+      const data=await response.json().catch(()=>({}));
+      if(!response.ok)throw new Error(typeof data.detail==="string"?data.detail:`Account request failed (HTTP ${response.status}).`);
+      if(!data.access_token||!data.user)throw new Error("The account service returned an invalid response.");
+      localStorage.setItem("solarsleuth_access_token",data.access_token);
+      setAccessToken(data.access_token);setUserName(data.user.name);setEmail(data.user.email);
+      setBusinessName(data.user.business_name||"");setAuthed(true);setShowAuth(false);setPage("overview");
+      setPassword("");setConfirmPassword("");
+    }catch(err){
+      setAuthError(err instanceof Error?err.message:"Unable to reach the account service. Check the backend and MongoDB configuration.");
+    }
   };
-  const logout = () => { setAuthed(false);try{localStorage.removeItem("solarsleuth_demo_session")}catch{};setPage("overview"); };
+  const logout = () => {
+    setAuthed(false);setAccessToken("");setPassword("");
+    try{localStorage.removeItem("solarsleuth_access_token")}catch{}
+    setPage("overview");
+  };
   const uploadDataset = async (e: FormEvent) => {
     e.preventDefault();
     if(!datasetFile){setError("Choose a CSV or XLSX dataset first.");return;}
@@ -232,7 +242,7 @@ export default function App() {
     setError("");setBusy(true);setUploadStage("running");setPage("assistant");
     setTurns(old=>[...old,{id,question:`Dataset analysis: ${datasetFile.name}`,createdAt:Date.now(),loading:true}]);
     try{
-      const response=await fetch(apiBase+"/api/v1/analyze/upload",{method:"POST",body:form,signal:AbortSignal.timeout(540000)});
+      const response=await fetch(apiBase+"/api/v1/analyze/upload",{method:"POST",headers:{Authorization:"Bearer "+accessToken},body:form,signal:AbortSignal.timeout(540000)});
       const raw=await response.json().catch(() => ({}));
       if(!response.ok)throw new Error(typeof raw.detail==="string"?raw.detail:raw.detail?.message || `Analysis request failed (HTTP ${response.status}).`);
       if(!raw.ml_analysis) throw new Error("The backend response did not include the deterministic ML result.");
@@ -250,7 +260,7 @@ export default function App() {
   const latestTurn = turns.filter(t=>t.result).slice(-1)[0];
 
   return <>
-    {showAuth&&<div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="authTitle" onClick={e=>{if(e.target===e.currentTarget)setShowAuth(false)}}><div className="auth-card"><button className="modal-close" aria-label="Close sign-in" onClick={()=>setShowAuth(false)}>×</button><div className="auth-brand"><BrandMark/><b>SolarSleuth</b></div><div className="eyebrow">DEMO WORKSPACE ACCESS</div><h2 id="authTitle">Your solar intelligence workspace.</h2>{authMode==="signin"&&<div className="demo-cred"><div><b>Demo credentials</b><span>demo@solarsleuth.app · Demo@1234</span></div><button className="small-action" type="button" onClick={()=>{setEmail("demo@solarsleuth.app");setPassword("Demo@1234")}}>Use demo login</button></div>}<div className="auth-tabs"><button type="button" className={authMode==="signin"?"on":""} onClick={()=>{setAuthMode("signin");setAuthError("")}}>Sign in</button><button type="button" className={authMode==="signup"?"on":""} onClick={()=>{setAuthMode("signup");setAuthError("")}}>Create account</button></div><form onSubmit={login}>{authMode==="signup"&&<><label htmlFor="authName">Your name</label><input id="authName" autoComplete="name" value={fullName} onChange={e=>setFullName(e.target.value)} placeholder="e.g. Alex Morgan"/></>}<label htmlFor="authEmail">Email address</label><input id="authEmail" type="email" autoComplete="username" value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@company.com"/><label htmlFor="authPassword">Password</label><input id="authPassword" type="password" autoComplete={authMode==="signup"?"new-password":"current-password"} value={password} onChange={e=>setPassword(e.target.value)} placeholder={authMode==="signup"?"8+ characters, a letter and a number":"Enter your password"}/>{authMode==="signup"&&<><label htmlFor="authConfirm">Confirm password</label><input id="authConfirm" type="password" autoComplete="new-password" value={confirmPassword} onChange={e=>setConfirmPassword(e.target.value)} placeholder="Repeat password"/></>}{authError&&<div className="auth-error" role="alert">{authError}</div>}<button className="btn btn-primary btn-lg btn-full" type="submit">{authMode==="signup"?"Create demo account ↗":"Enter demo workspace ↗"}</button></form><p className="inline-note">Browser-local demo authentication only. Do not use for sensitive data.</p></div></div>}
+    {showAuth&&<div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="authTitle" onClick={e=>{if(e.target===e.currentTarget)setShowAuth(false)}}><div className="auth-card"><button className="modal-close" aria-label="Close sign-in" onClick={()=>setShowAuth(false)}>×</button><div className="auth-brand"><BrandMark/><b>SolarSleuth</b></div><div className="eyebrow">DEMO WORKSPACE ACCESS</div><h2 id="authTitle">Your solar intelligence workspace.</h2><div className="auth-tabs"><button type="button" className={authMode==="signin"?"on":""} onClick={()=>{setAuthMode("signin");setAuthError("")}}>Sign in</button><button type="button" className={authMode==="signup"?"on":""} onClick={()=>{setAuthMode("signup");setAuthError("")}}>Create account</button></div><form onSubmit={login}>{authMode==="signup"&&<><label htmlFor="authName">Your name</label><input id="authName" autoComplete="name" value={fullName} onChange={e=>setFullName(e.target.value)} placeholder="e.g. Alex Morgan"/><label htmlFor="businessName">Business / organisation</label><input id="businessName" autoComplete="organization" value={businessName} onChange={e=>setBusinessName(e.target.value)} placeholder="Your company or plant operator name"/></>}<label htmlFor="authEmail">Email address</label><input id="authEmail" type="email" autoComplete="username" value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@company.com"/><label htmlFor="authPassword">Password</label><input id="authPassword" type="password" autoComplete={authMode==="signup"?"new-password":"current-password"} value={password} onChange={e=>setPassword(e.target.value)} placeholder={authMode==="signup"?"8+ characters, a letter and a number":"Enter your password"}/>{authMode==="signup"&&<><label htmlFor="authConfirm">Confirm password</label><input id="authConfirm" type="password" autoComplete="new-password" value={confirmPassword} onChange={e=>setConfirmPassword(e.target.value)} placeholder="Repeat password"/></>}{authError&&<div className="auth-error" role="alert">{authError}</div>}<button className="btn btn-primary btn-lg btn-full" type="submit">{authMode==="signup"?"Create demo account ↗":"Enter demo workspace ↗"}</button></form><p className="inline-note">Accounts are stored by the backend in MongoDB. Passwords are securely hashed; each account receives a separate business workspace.</p></div></div>}
     {!authed ? <section id="landing" className="landing-shell">
       <header className="topbar landing-topbar"><a className="brand" href="#home"><BrandMark/><span className="brand-copy"><b>SolarSleuth</b><small>Performance intelligence</small></span></a><div className="topbar-right"><span className="environment-pill"><span className={"status-dot "+(ready==="ready"?"":"")}></span>{statusText}</span><button className="icon-btn theme-toggle" onClick={()=>setTheme(theme==="dark"?"light":"dark")} aria-label="Toggle theme"><span className="theme-symbol">{theme==="dark"?"☾":"☼"}</span></button><button className="signin-btn" onClick={()=>setShowAuth(true)}>Sign in</button></div></header>
       <div className="hero-grid"><div className="hero-copy"><div className="eyebrow"><span className="eyebrow-line"></span> SOLAR ASSET INTELLIGENCE · GLOBATHON 2026</div><h1>When output falls short,<br/>find the <span>reason behind it.</span></h1><p className="hero-lede">Turn solar plant readings into an evidence-aware explanation. Explore performance, review possible causes and keep uncertainty visible — with a local AI model running on your machine.</p><div className="hero-actions"><button className="btn btn-primary btn-lg" id="startdemo" onClick={startDemo}>Explore the live demo <span aria-hidden="true"> ↗ </span></button><a className="text-link" href="#how">See how it works <span> ↓ </span></a></div><div className="hero-proof"><div className="proof-avatars"><span>PV</span><span>AI</span><span>✓</span></div><div><b>Explainable by design</b><small>Local inference · Evidence-first explanations · Human verification</small></div></div></div><div className="hero-visual" aria-label="Illustrative solar performance visualization"><div className="visual-orbit orbit-one"></div><div className="visual-orbit orbit-two"></div><div className="sun-glow"></div><div className="solar-art"><div className="sun-disc"></div><div className="sun-ray ray-a"></div><div className="sun-ray ray-b"></div><div className="sun-ray ray-c"></div><div className="solar-hill hill-back"></div><div className="solar-hill hill-front"></div><div className="panel-grid">{Array.from({length:12},(_,i)=><span key={i}/>)}</div></div><div className="visual-caption">LOCAL AI · SOLAR PERFORMANCE INTELLIGENCE</div></div></div>
@@ -258,8 +268,8 @@ export default function App() {
       <section className="landing-section" id="how"><div className="section-heading"><div><div className="eyebrow">FROM READINGS TO EVIDENCE</div><h2>A clearer view of every solar performance gap.</h2></div><p>Built for operators and analysts who need a useful explanation without confusing a model hypothesis with a confirmed fault.</p></div><div className="feature-grid"><article className="feature-card"><span className="feature-number">01 / OBSERVE</span><div className="feature-icon icon-sun">☼</div><h3>Bring the readings together</h3><p>Upload a CSV or Excel workbook; the ML pipeline validates and maps the available measurements.</p></article><article className="feature-card"><span className="feature-number">02 / EXPLAIN</span><div className="feature-icon icon-unknown">◌</div><h3>Keep uncertainty visible</h3><p>Separate observations from possible causes, checks and limitations in the model's response.</p></article><article className="feature-card"><span className="feature-number">03 / VERIFY</span><div className="feature-icon icon-validate">✓</div><h3>Act on evidence, not guesses</h3><p>Use recommendations as verification steps, not proof that a fault has occurred.</p></article></div></section>
       <footer className="site-footer"><span>SolarSleuth © 2026</span><span>Globathon · Solar Recovery Intelligence</span><span>Local prototype · Demo authentication</span></footer>
     </section> : <>
-      <header className="topbar"><a className="brand" href="#home" onClick={e=>{e.preventDefault();setPage("overview")}}><BrandMark/><span className="brand-copy"><b>SolarSleuth</b><small>Performance intelligence</small></span></a><div className="topbar-right"><span className="environment-pill"><span className="status-dot"></span>{statusText}</span><button className="icon-btn theme-toggle" onClick={()=>setTheme(theme==="dark"?"light":"dark")} aria-label="Toggle theme"><span className="theme-symbol">{theme==="dark"?"☾":"☼"}</span></button><div className="avatar-wrap"><button className="avatar-btn" title="Account menu" aria-expanded={menuOpen} onClick={()=>setMenuOpen(v=>!v)}>{userName.charAt(0)}</button><div className={"user-menu "+(menuOpen?"":"hide")}><div className="um-name">{userName}</div><div className="um-email">{email}</div><button className="um-out" onClick={()=>{setMenuOpen(false);logout()}}>Sign out</button></div></div></div></header>
-      <div className="app-shell"><aside className="sidebar"><div className="sidebar-label">WORKSPACE</div><nav className="side-nav">{nav.map(n=><button key={n.id} className={page===n.id?"on":""} onClick={()=>setPage(n.id)}><span>{n.icon}</span>{n.label}</button>)}</nav><div className="sidebar-bottom"><div className="sidebar-mini-icon">✳</div><div><b>{userName}</b><small>{email}</small></div><span className="live-dot"></span></div></aside>
+      <header className="topbar"><a className="brand" href="#home" onClick={e=>{e.preventDefault();setPage("overview")}}><BrandMark/><span className="brand-copy"><b>SolarSleuth</b><small>Performance intelligence</small></span></a><div className="topbar-right"><span className="environment-pill"><span className="status-dot"></span>{statusText}</span><button className="icon-btn theme-toggle" onClick={()=>setTheme(theme==="dark"?"light":"dark")} aria-label="Toggle theme"><span className="theme-symbol">{theme==="dark"?"☾":"☼"}</span></button><div className="avatar-wrap"><button className="avatar-btn" title="Account menu" aria-expanded={menuOpen} onClick={()=>setMenuOpen(v=>!v)}>{userName.charAt(0)}</button><div className={"user-menu "+(menuOpen?"":"hide")}><div className="um-name">{userName}</div><div className="um-email">{businessName||email}</div><button className="um-out" onClick={()=>{setMenuOpen(false);logout()}}>Sign out</button></div></div></div></header>
+      <div className="app-shell"><aside className="sidebar"><div className="sidebar-label">WORKSPACE</div><nav className="side-nav">{nav.map(n=><button key={n.id} className={page===n.id?"on":""} onClick={()=>setPage(n.id)}><span>{n.icon}</span>{n.label}</button>)}</nav><div className="sidebar-bottom"><div className="sidebar-mini-icon">✳</div><div><b>{userName}</b><small>{businessName||email}</small></div><span className="live-dot"></span></div></aside>
       <main className="workspace"><div className="workspace-head"><div><div className="breadcrumb">WORKSPACE <span>/</span> <b>{nav.find(n=>n.id===page)?.label}</b></div><h1>{page==="overview"?"Plant overview":page==="data"?"Upload & analyse":page==="validation"?"Validation Lab":page==="report"?"Reports":"AI explanation"}</h1><p>{page==="overview"?"A file-driven view of your latest analysis and local service readiness.":page==="data"?"Upload a CSV or Excel workbook for validation, deterministic analysis, and AI explanation.":page==="validation"?"Inspect data-quality checks, ML evidence and findings that need operational verification.":page==="report"?"Review and print the latest dataset-derived report.":"Read the detailed explanation generated from the latest uploaded dataset."}</p></div><div className="head-actions"><span className="plant-select-label">LATEST UPLOAD</span><div className="plant-select"><span className="plant-icon">☼</span><span><b>{turns.filter(t=>t.result).slice(-1)[0]?.question.replace("Dataset analysis: ","") || "No dataset analysed"}</b><small>{turns.filter(t=>t.result).length} successful analysis result(s)</small></span></div></div></div>
       <section className="controls-panel"><div><label>Service status</label><div className="engine-status"><span className={"status-dot "+(ready==="ready"?"":"")}></span>{statusText}</div><small className="service-breakdown">ML API: {serviceChecks.ml?"reachable":"unavailable"} · LLM API: {serviceChecks.llm?"reachable":"unavailable"} · Model: {serviceChecks.model?"loaded":"not loaded"}</small></div><div><label>Backend API</label><input aria-label="Backend API URL" value={customApi} onChange={e=>setCustomApi(e.target.value)} style={{maxWidth:280}}/></div><button className="small-action" onClick={()=>{const b=customApi.trim().replace(/\/$/,"");if(b){setApiBase(b);try{localStorage.setItem("solarsleuth_api_base",b)}catch{}setReady("checking");setTimeout(()=>void checkReady(),50)}}}>Connect</button></section>
       {page==="overview"&&<div className="analysis-card"><div className="eyebrow">FILE-DRIVEN SOLAR INTELLIGENCE</div><h2>{turns.some(t=>t.result)?"Latest plant analysis":"Start with your plant data"}</h2><p className="analysis-summary">{turns.some(t=>t.result)?"Your latest report is based on the uploaded dataset and deterministic ML output. Open Reports to review or save it.":"Upload a CSV or Excel workbook. SolarSleuth validates the file, maps supported columns, runs deterministic analysis, and asks the local AI model to explain the evidence."}</p><div className="metric-grid"><div className="metric-card"><span>Successful analyses</span><strong>{turns.filter(t=>t.result).length}</strong></div><div className="metric-card"><span>Service connection</span><strong>{ready==="ready"?"Ready":ready==="warming"?"Warming up":ready==="checking"?"Checking":"Unavailable"}</strong></div><div className="metric-card"><span>Latest dataset</span><strong>{turns.filter(t=>t.result).length? "Processed":"Not uploaded"}</strong></div></div><button className="primary-action" onClick={()=>setPage("data")}>Upload plant data ↗</button></div>}
@@ -268,7 +278,7 @@ export default function App() {
       {page==="validation"&&(latestTurn?.result?.ml_analysis ? <ValidationLab result={latestTurn.result} datasetName={latestTurn.question.replace("Dataset analysis: ","")}/> : <div className="analysis-card analysis-empty"><div className="empty-icon">✓</div><h3>No analysis to validate yet</h3><p>Upload a CSV or Excel workbook first. The Validation Lab will show the data-quality checks and evidence returned by the deterministic ML service.</p><button className="primary-action" onClick={()=>setPage("data")}>Upload plant data ↗</button></div>)}
       {page==="report"&&<div className="analysis-card report"><div className="analysis-topline noprint"><div><div className="eyebrow">REPORT</div><h2>Latest analysis report</h2><p className="analysis-meta">Generated from the latest successful uploaded-dataset analysis.</p></div><button className="small-action" onClick={()=>window.print()} disabled={!turns.some(t=>t.result)}>Print / Save PDF</button></div>{turns.filter(t=>t.result).slice(-1).map(t=><div key={t.id} className="report-content"><div className="report-heading"><div className="eyebrow">SOLARSLEUTH · SOLAR PERFORMANCE INTELLIGENCE</div><h1>Plant performance analysis</h1><p>Dataset: {t.question.replace("Dataset analysis: ","")}</p><p>Generated: {new Date(t.createdAt).toLocaleString()}</p><p>Plant: {t.result!.plant_id || "Not specified"} · Mode: {t.result!.analysis_mode || "Not specified"}</p><p>Request ID: {t.result!.request_id || "Not provided"}</p></div><h3>Executive analysis</h3><AnalysisResponse result={t.result!}/></div>)}{!turns.some(t=>t.result)&&<div className="analysis-empty"><p>No successful analysis is available yet.</p><button className="primary-action" onClick={()=>setPage("data")}>Run an analysis ↗</button></div>}</div>}
       {page==="assistant"&&<><div className="analysis-card"><div className="analysis-topline"><div><div className="eyebrow">LOCAL MODEL · QWEN</div><h2>AI explanation</h2><p className="analysis-meta">Detailed explanations are generated from the deterministic ML result returned by your uploaded dataset.</p></div><button className="small-action" onClick={()=>setTurns([])} disabled={busy}>Clear history</button></div><p className="analysis-meta">The browser sends files only to the application backend. Follow-up chat is not enabled until the backend exposes a dataset-grounded conversation endpoint.</p>{uploadStage==="running"&&<div className="pipeline-status" role="status"><span className="inline-spinner" aria-hidden="true"/> Processing upload → deterministic ML analysis → local AI explanation. Keep the services running.</div>}{uploadStage==="complete"&&<div className="pipeline-status success" role="status">Analysis completed successfully. The ML result and AI explanation are shown below.</div>}{uploadStage==="failed"&&<div className="pipeline-status failed" role="status">Analysis failed. See the message in the latest request below, then retry from Upload & analyse.</div>}</div><div className="assistant-history" style={{marginTop:18}}>{turns.length===0&&<div className="analysis-card analysis-empty"><div className="empty-icon">✳</div><h3>No analysis yet</h3><p>Upload a plant dataset to generate its deterministic analysis and local AI explanation.</p><button className="primary-action" onClick={()=>setPage("data")}>Upload a dataset ↗</button></div>}{turns.map(t=><div className="assistant-turn" key={t.id}><div className="user-question">{t.question}</div><div className="assistant-label"><span className="chat-avatar">✳</span>SolarSleuth · local AI</div>{t.loading?<div className="assistant-response"><p>Your upload is being processed by the backend. The deterministic ML service runs first, followed by the local AI explanation.</p><div className="loader" style={{marginTop:12}}/></div>:t.error?<div className="inline-error">{t.error}</div>:t.result?<AnalysisResponse result={t.result}/>:null}</div>)}</div></>}
-      </main></div><footer className="app-footer">SolarSleuth is a prototype. Confirm model hypotheses against real telemetry and qualified operator checks. Demo sign-in is not production authentication.</footer>
+      </main></div><footer className="app-footer">SolarSleuth is a prototype. Confirm model hypotheses against real telemetry and qualified operator checks. Account access uses expiring backend-issued tokens.</footer>
     </>}
   </>;
 }
