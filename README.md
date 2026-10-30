@@ -15,7 +15,9 @@ The Vite script is pinned to port 5173 and fails rather than silently choosing a
 
 - **Dataset upload:** CSV/XLSX file upload to `POST /api/v1/analyze/upload`. Options include plant ID, auto/snapshot/full mode, optional IANA timezone, sampling interval and Excel sheet name.
 - **File-only workflow:** plant measurements are supplied through CSV/XLSX uploads. Manual measurement entry is not part of the operational workflow.
-- **Response:** uploaded-data responses display the complete deterministic ML contract (energy metrics, waterfall, anomalies, hypotheses and limitations) separately from the LLM explanation (summary, observations, possible causes, supporting evidence, technician checks, limitations and confidence).
+- **Response:** uploaded-data responses display the deterministic ML contract (energy metrics, waterfall, anomalies, hypotheses, dataset profile, units, validation checks and limitations) separately from the LLM explanation (summary, observations, possible causes, supporting evidence, technician checks, limitations and confidence).
+- **Reports:** the latest successful dataset analysis can be printed or saved as PDF through the browser print dialog; report metadata is taken from the upload response.
+- **AI explanation:** displays the explanation returned by the upload pipeline. Dataset-grounded follow-up chat is intentionally not presented as available because the current backend branch does not expose a conversation endpoint.
 
 The current upload UI accepts one operating-data file up to 25 MiB. The Python ML pipeline supports additional context inputs, but the HTTP upload contract does not yet expose separate weather/device/forecast/event-log files. Column mapping and unit interpretation must be validated by the ML service; ambiguous units must not be guessed. See [PROJECT_REQUIREMENTS.md](./PROJECT_REQUIREMENTS.md) for the full architecture, security, UX, report, and acceptance criteria.
 
@@ -44,4 +46,4 @@ npm run build
 npm run preview
 ```
 
-The repository changes have not been verified by running this build in the target Windows environment yet.
+A GitHub Actions workflow at `.github/workflows/frontend-ci.yml` runs the TypeScript/Vite build on frontend-branch changes. Also run the commands above locally on Windows before using the frontend in the live four-service setup.
