@@ -1,71 +1,43 @@
-# Local LLM API — Solar Recovery Intelligence
+# Local LLM API — SolarSleuth Explanation Service
 
-This service connects the fine-tuned Qwen LoRA adapter to the backend/frontend workflow. It accepts outputs from the teammate's ML models. It does not implement those ML models or a document retriever.
+This branch provides the local language-model explanation layer on port **8000**. It receives structured observations and the deterministic ML contract from the application backend. It does not ingest datasets or calculate energy metrics.
 
-## Files
+## Start
 
-- api.py: FastAPI routes, CORS and health checks.
-- llm_service.py: lazy model loading, prompt construction, inference and JSON validation.
-- schemas.py: request/response contracts.
-- requirements-api.txt: runtime dependencies.
-- .env.example: configuration template.
-- tests/test_api.py: API contract tests with model inference mocked.
+From the AI-model branch root:
 
-## Install and start
+```powershell
+py -m venv .venv-ai
+.\.venv-ai\Scripts\Activate.ps1
+python -m pip install -r requirements-api.txt
+Copy-Item .env.example .env
+python -m uvicorn api:app --host 127.0.0.1 --port 8000
+```
 
-Run these commands from the repository root with .venv-ai activated:
+Set `INTERNAL_SERVICE_TOKEN` to the same value configured in backend and ML service. In development it may be empty; with `ENVIRONMENT=production`, the service refuses unauthenticated internal inference calls.
 
-    python -m pip install -r requirements-api.txt
-    Copy-Item .env.example .env
-    python -m uvicorn api:app --host 127.0.0.1 --port 8000 --reload
+## Configuration
 
-The adapter should exist at models/solar-qwen-lora-final/adapter_config.json. The base model must be downloadable from Hugging Face or already cached. The model loads on the first analysis request, so that request takes longer. Open http://127.0.0.1:8000/docs to explore the API.
+- `MODEL_NAME`: default `Qwen/Qwen3.5-0.8B`
+- `ADAPTER_PATH`: default `models/solar-qwen-lora-final`
+- `INTERNAL_SERVICE_TOKEN`: shared internal service secret
+- `ENVIRONMENT`: development or production
 
-- GET /health: liveness check, no model loading.
-- GET /ready: indicates whether model weights have been loaded.
-- POST /api/v1/analyze: sends plant observations and ML outputs to the LLM.
+The service loads the configured model and adapter lazily on the first inference. Confirm that the adapter directory contains `adapter_config.json` and is compatible with the selected base model. The repository does not include model weights or certify that a developer's local adapter path exists. A missing or incompatible adapter causes an explicit service error; it must not be described as a successful model load.
 
-## Request contract
+## Endpoints
 
-    {
-      "request_id": "req-001",
-      "plant_id": "plant-demo-01",
-      "timestamp": "2026-10-30T11:30:00+05:30",
-      "plant_context": {"installed_capacity_kw": 500},
-      "observations": {"irradiance_w_m2": 720, "ambient_temperature_c": 32, "inverter_status": "normal", "inverter_output_kw": 310, "data_quality": "not_verified"},
-      "ml_results": {"fault_classifier": {"predicted_label": "possible_inverter_underperformance", "model_score": 0.71}, "expected_output_kw": {"value": 350, "source": "power_estimation_model"}},
-      "retrieved_context": []
-    }
+- `GET /health`: liveness
+- `GET /ready`: reports whether model weights have loaded
+- `POST /api/v1/analyze`: authenticated internal explanation endpoint
 
-The values are illustrative only. Replace them with real ML outputs and plant readings. The API passes these values to the model; it does not calculate or verify the model score or expected output.
+The system prompt treats `ml_results` as authoritative and prohibits arithmetic or changing supplied numerical values. It explains possible causes only as hypotheses and reports evidence, checks and limitations.
 
-The response envelope contains request_id, plant_id, model, and analysis. The analysis object contains summary, observations, possible_causes, supporting_evidence, recommended_checks, limitations, and confidence. The frontend should render these fields in UI components instead of displaying raw JSON.
+## Tests
 
-## Frontend example
+```powershell
+python -m pip install httpx pytest
+python -m pytest -q
+```
 
-    const response = await fetch("http://127.0.0.1:8000/api/v1/analyze", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    });
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.detail ?? "Analysis request failed");
-    }
-    const result = await response.json();
-    // Render result.analysis.summary, result.analysis.supporting_evidence, etc.
-
-The frontend origin must be listed in CORS_ORIGINS. A frontend in a browser can reach this API only when the machine running it is network-accessible. A separately hosted backend cannot use 127.0.0.1 to reach your laptop.
-
-## ML and RAG boundary
-
-Call the teammate's ML models first, then pass their outputs in ml_results and source readings in observations. Keep energy-loss, expected-generation and financial calculations in deterministic code or the appropriate ML component. This API accepts optional retrieved_context excerpts but does not perform retrieval itself; connect a real retriever separately.
-
-The generic dictionaries are intentional because the teammate's exact output schema has not been provided. Once it is agreed, replace them with typed models. Pydantic validation verifies response shape, not factual correctness; held-out evaluation and evidence-grounding tests are still required.
-
-## Contract tests
-
-    python -m pip install httpx pytest
-    python -m pytest -q
-
-Tests mock model inference and do not test model quality or GPU inference. Do not commit model weights, .venv-ai, datasets, .env, or private plant data.
+Tests mock inference and do not certify GPU execution, adapter compatibility, explanation quality or model accuracy. Keep weights, datasets, `.env`, and private plant data out of Git.
