@@ -1,6 +1,6 @@
 """Private HTTP boundary for the deterministic SolarSleuth ML pipeline.
 
-Run from ML-models/: python -m uvicorn api:app --host 127.0.0.1 --port 8002
+Run from ml-service/: python -m uvicorn api:app --host 127.0.0.1 --port 8002
 The HTTP adapter accepts one operating-data CSV/XLSX file. The Python
 pipeline's multi-file input support is intentionally not exposed by this route.
 """
