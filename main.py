@@ -284,7 +284,12 @@ async def analyze_upload(
             content, filename, plant_id=plant_id, mode=mode, timezone=timezone,
             interval_minutes=interval_minutes, sheet_name=sheet_name,
         )
-        ml_status = ml_result.get("analysis_status")\n        if ml_status in {"invalid_input", "failed"}:\n            raise HTTPException(status_code=422, detail="The uploaded dataset did not pass deterministic ML validation.")\n        if ml_status not in {"success", "partial"}:\n            raise HTTPException(status_code=502, detail="The ML service returned an unknown analysis status.")\n        llm_payload = {
+        ml_status = ml_result.get("analysis_status")
+        if ml_status in {"invalid_input", "failed"}:
+            raise HTTPException(status_code=422, detail="The uploaded dataset did not pass deterministic ML validation.")
+        if ml_status not in {"success", "partial"}:
+            raise HTTPException(status_code=502, detail="The ML service returned an unknown analysis status.")
+        llm_payload = {
             "request_id": request_id,
             "plant_id": plant_id,
             "timestamp": None,
