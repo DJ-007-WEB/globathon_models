@@ -1,40 +1,43 @@
-"""FastAPI entry point for the local SolarSleuth explanation-only LLM service."""
+"""Private FastAPI boundary for SolarSleuth's local explanation-only LLM."""
+from __future__ import annotations
+
 import hmac
 import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, Header, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
 from starlette.concurrency import run_in_threadpool
 
 from llm_service import LLMService
 from schemas import AnalysisRequest, AnalysisResponse, AnalyzeResponse
 
 load_dotenv()
-MODEL_NAME = os.getenv("MODEL_NAME", "Qwen/Qwen3.5-0.8B")
+MODEL_NAME = os.getenv("MODEL_NAME", "").strip() or None
 ADAPTER_PATH = os.getenv("ADAPTER_PATH", "models/solar-qwen-lora-final")
 ENVIRONMENT = os.getenv("ENVIRONMENT", "development").lower()
 SERVICE_TOKEN = os.getenv("INTERNAL_SERVICE_TOKEN")
-CORS_ORIGINS = [x.strip() for x in os.getenv(
-    "CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173"
-).split(",") if x.strip()]
+MAX_NEW_TOKENS = max(128, min(int(os.getenv("MAX_NEW_TOKENS", "450")), 1024))
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Keep model loading lazy; LLMService loads on the first inference request.
-    app.state.llm_service = LLMService(model_name=MODEL_NAME, adapter_path=ADAPTER_PATH)
+    if ENVIRONMENT == "production" and not SERVICE_TOKEN:
+        raise RuntimeError("INTERNAL_SERVICE_TOKEN must be configured in production.")
+    app.state.llm_service = LLMService(
+        model_name=MODEL_NAME,
+        adapter_path=ADAPTER_PATH,
+        max_new_tokens=MAX_NEW_TOKENS,
+    )
     yield
 
 
-app = FastAPI(title="SolarSleuth Local Explanation API", version="2.0.0", lifespan=lifespan)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=CORS_ORIGINS,
-    allow_credentials=False,
-    allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["Content-Type", "Authorization", "X-Service-Token"],
+app = FastAPI(
+    title="SolarSleuth Local Explanation API",
+    version="2.1.0",
+    description="Private explanation-only service. Numerical authority remains in deterministic ML.",
+    lifespan=lifespan,
 )
 
 
@@ -48,15 +51,24 @@ def require_service_token(token: str | None) -> None:
 
 
 @app.get("/health")
-def health():
+def health() -> dict:
     return {"status": "ok", "service": "solarsleuth-local-llm"}
 
 
 @app.get("/ready")
-def ready():
-    service = getattr(app.state, "llm_service", None)
+def ready() -> dict:
+    service: LLMService | None = getattr(app.state, "llm_service", None)
     loaded = bool(service and service.is_loaded)
-    return {"status": "ready" if loaded else "not_loaded", "model_loaded": loaded}
+    adapter_exists = bool(service and service.adapter_path.is_dir()
+                           and (service.adapter_path / "adapter_config.json").is_file())
+    return {
+        "status": "ready" if loaded else "not_loaded",
+        "service": "solarsleuth-local-llm",
+        "model_loaded": loaded,
+        "adapter_available": adapter_exists,
+        "model_name": service.resolved_model_name if service else MODEL_NAME,
+        "load_error": service.last_load_error if service else None,
+    }
 
 
 @app.post("/api/v1/analyze", response_model=AnalyzeResponse)
@@ -69,14 +81,16 @@ async def analyze(
     try:
         analysis: AnalysisResponse = await run_in_threadpool(service.analyze, request)
     except FileNotFoundError as exc:
-        raise HTTPException(status_code=503, detail="Configured local model or adapter files were not found.") from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=502, detail=f"Model returned an invalid explanation: {exc}") from exc
-    except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail="Local model inference failed.") from exc
+        service.last_load_error = str(exc)
+        raise HTTPException(
+            status_code=503,
+            detail="Configured local model or LoRA adapter files are unavailable. Check ADAPTER_PATH and adapter metadata.",
+        ) from exc
+    except (ValueError, RuntimeError) as exc:
+        raise HTTPException(status_code=503, detail="Local model inference could not produce a valid explanation.") from exc
     return AnalyzeResponse(
         request_id=request.request_id,
         plant_id=request.plant_id,
         analysis=analysis,
-        model=MODEL_NAME,
+        model=service.resolved_model_name or MODEL_NAME or "adapter-configured-model",
     )
