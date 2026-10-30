@@ -68,6 +68,7 @@ async def lifespan(app: FastAPI):
             await run_in_threadpool(database.users.create_index, "email", unique=True)
             await run_in_threadpool(database.analyses.create_index, [("business_id", 1), ("created_at", -1)])
             await run_in_threadpool(database.analyses.create_index, [("business_id", 1), ("request_id", 1)], unique=True)
+            await run_in_threadpool(database.analysis_messages.create_index, [("business_id", 1), ("request_id", 1), ("created_at", 1)])
         except PyMongoError as exc:
             if ENVIRONMENT == "production":
                 raise RuntimeError("MongoDB connection failed. Check MONGODB_URI and network access.") from exc
@@ -148,6 +149,11 @@ class AuthPayload(BaseModel):
 class RegisterPayload(AuthPayload):
     name: str
     business_name: str
+
+
+class AnalysisChatPayload(BaseModel):
+    question: str
+
 
 def _internal_headers() -> dict[str, str]:
     if SERVICE_TOKEN:
@@ -399,6 +405,103 @@ async def get_analysis(request_id: str,
     if not document:
         raise HTTPException(status_code=404, detail="Analysis was not found in this business workspace.")
     return {**_public_analysis_summary(document), "result": document["result"]}
+
+
+
+@app.get("/api/v1/analyses/{request_id}/chat")
+async def get_analysis_chat(request_id: str,
+                            authorization: str | None = Header(None, alias="Authorization")) -> dict:
+    account = _authorize_browser(authorization)
+    db = _database_required()
+    scoped = {"business_id": account["business_id"], "request_id": request_id}
+    try:
+        analysis = await run_in_threadpool(db.analyses.find_one, scoped, {"_id": 1})
+        if not analysis:
+            raise HTTPException(status_code=404, detail="Analysis was not found in this business workspace.")
+        cursor = await run_in_threadpool(lambda: db.analysis_messages.find(
+            scoped, {"_id": 0, "role": 1, "content": 1, "created_at": 1}
+        ).sort("created_at", 1).limit(100))
+        messages = await run_in_threadpool(lambda: list(cursor))
+    except PyMongoError as exc:
+        raise HTTPException(status_code=503, detail="Conversation history is temporarily unavailable.") from exc
+    return {"request_id": request_id, "messages": [
+        {"role": item["role"], "content": item["content"],
+         "created_at": item["created_at"].isoformat() if isinstance(item.get("created_at"), datetime) else item.get("created_at")}
+        for item in messages
+    ]}
+
+
+@app.post("/api/v1/analyses/{request_id}/chat")
+async def ask_about_analysis(request_id: str, payload: AnalysisChatPayload,
+                             authorization: str | None = Header(None, alias="Authorization")) -> dict:
+    account = _authorize_browser(authorization)
+    question = payload.question.strip()
+    if not question or len(question) > 2000:
+        raise HTTPException(status_code=422, detail="Question must contain 1 to 2,000 characters.")
+    db = _database_required()
+    scoped = {"business_id": account["business_id"], "request_id": request_id}
+    try:
+        document = await run_in_threadpool(db.analyses.find_one, scoped, {"_id": 0})
+        if not document:
+            raise HTTPException(status_code=404, detail="Analysis was not found in this business workspace.")
+        cursor = await run_in_threadpool(lambda: db.analysis_messages.find(
+            scoped, {"_id": 0, "role": 1, "content": 1}
+        ).sort("created_at", -1).limit(8))
+        history = await run_in_threadpool(lambda: list(cursor))
+    except PyMongoError as exc:
+        raise HTTPException(status_code=503, detail="Saved analysis is temporarily unavailable.") from exc
+
+    saved = document.get("result") or {}
+    ml_result = saved.get("ml_analysis")
+    if not isinstance(ml_result, dict):
+        raise HTTPException(status_code=422, detail="This saved report has no deterministic ML evidence for follow-up.")
+    context = [
+        f"{item['role'].upper()}: {str(item['content'])[:2000]}"
+        for item in reversed(history)
+    ]
+    llm_payload = {
+        "request_id": request_id,
+        "plant_id": document.get("plant_id", "unknown-plant"),
+        "timestamp": None,
+        "plant_context": {
+            "source": "saved_analysis_follow_up",
+            "analysis_mode": document.get("analysis_mode"),
+            "user_question": question,
+        },
+        "observations": {
+            "analysis_status": ml_result.get("analysis_status"),
+            "summary": ml_result.get("summary"),
+            "data_quality": ml_result.get("data_quality", {}),
+            "limitations": ml_result.get("limitations", []),
+            "unresolved_fields": ml_result.get("unresolved_fields", []),
+            "prior_explanation": saved.get("analysis", {}),
+        },
+        "ml_results": _compact_ml_for_llm(ml_result),
+        "retrieved_context": context[-8:],
+    }
+    explanation = await _post_llm(llm_payload)
+    try:
+        validated = AnalyzeResponse.model_validate({
+            **explanation, "request_id": request_id,
+            "plant_id": document.get("plant_id", "unknown-plant"),
+        })
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="The local LLM returned an invalid follow-up response.") from exc
+
+    now = datetime.now(timezone.utc)
+    records = [
+        {"business_id": account["business_id"], "user_id": account["user_id"],
+         "request_id": request_id, "role": "user", "content": question, "created_at": now},
+        {"business_id": account["business_id"], "user_id": account["user_id"],
+         "request_id": request_id, "role": "assistant",
+         "content": validated.analysis.model_dump(mode="json"), "created_at": now},
+    ]
+    try:
+        await run_in_threadpool(db.analysis_messages.insert_many, records)
+    except PyMongoError as exc:
+        raise HTTPException(status_code=503, detail="The answer was generated but the conversation could not be saved.") from exc
+    return {"request_id": request_id, "answer": validated.analysis.model_dump(mode="json"),
+            "model": validated.model, "created_at": now.isoformat()}
 
 
 @app.get("/health")
