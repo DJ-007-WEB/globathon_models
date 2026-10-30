@@ -93,10 +93,10 @@ def test_analysis_list_is_scoped_to_authenticated_business(monkeypatch):
         "user_id": "user-a", "business_id": "business-a"
     })
     with TestClient(main.app) as client:
-        response = client.get("/api/v1/analyses")
+        response = client.get("/api/v1/analyses?plant_id=plant-west")
     assert response.status_code == 200
     assert response.json()["items"] == []
-    assert db.analyses.query == {"business_id": "business-a"}
+    assert db.analyses.query == {"business_id": "business-a", "plant_id": "plant-west"}
 
 
 def test_analysis_detail_cannot_cross_business_boundary(monkeypatch):
@@ -293,3 +293,26 @@ def test_update_plant_cannot_cross_business_boundary(monkeypatch):
             "plant_id": "plant-a", "name": "Renamed Plant"
         })
     assert response.status_code == 404
+
+
+def test_analysis_history_rejects_invalid_plant_filter(monkeypatch):
+    monkeypatch.setattr(main, "_authorize_browser", lambda authorization: {
+        "user_id": "user-a", "business_id": "business-a"
+    })
+    with TestClient(main.app) as client:
+        empty = client.get("/api/v1/analyses?plant_id=%20")
+        oversized = client.get("/api/v1/analyses?plant_id=" + "x" * 129)
+    assert empty.status_code == 422
+    assert oversized.status_code == 422
+
+
+def test_plant_capacity_rejects_non_finite_values(monkeypatch):
+    monkeypatch.setattr(main, "_authorize_browser", lambda authorization: {
+        "user_id": "user-a", "business_id": "business-a"
+    })
+    with TestClient(main.app) as client:
+        response = client.post("/api/v1/plants", json={
+            "plant_id": "plant-nan", "name": "Invalid Capacity",
+            "capacity_kw": float("nan")
+        })
+    assert response.status_code == 422
