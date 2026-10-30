@@ -51,6 +51,9 @@ function MlAnalysisResponse({ result }: { result: MlAnalysis }) {
     {Object.keys(waterfall).length>0&&<div className="analysis-section"><h3>Energy waterfall</h3><pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere",fontSize:12}}>{JSON.stringify(waterfall,null,2)}</pre></div>}
     {anomalies.length>0&&<div className="analysis-section"><h3>Detected anomalies ({anomalies.length})</h3><ul>{anomalies.slice(0,20).map((a:any,i:number)=><li key={i}>{typeof a==="string"?a:JSON.stringify(a)}</li>)}</ul></div>}
     {hypotheses.length>0&&<div className="analysis-section"><h3>ML hypotheses</h3><ul>{hypotheses.slice(0,20).map((h:any,i:number)=><li key={i}>{typeof h==="string"?h:JSON.stringify(h)}</li>)}</ul></div>}
+    {Array.isArray(result.evidence)&&result.evidence.length>0&&<div className="analysis-section"><h3>Deterministic ML evidence</h3><ul>{result.evidence.slice(0,30).map((x:any,i:number)=><li key={i}>{String(x)}</li>)}</ul></div>}
+    {result.data_quality&&<div className="analysis-section"><h3>Data quality · {String(result.data_quality.status||"not reported")}</h3><p>{result.data_quality.rows??"—"} rows inspected · {result.data_quality.counts?.warning??0} warnings · {result.data_quality.counts?.fail??0} failures</p></div>}
+    {Array.isArray(result.unresolved_fields)&&result.unresolved_fields.length>0&&<div className="analysis-section"><h3>Unresolved fields</h3><ul>{result.unresolved_fields.slice(0,30).map((x:any,i:number)=><li key={i}>{String(x)}</li>)}</ul></div>}
     {limitations.length>0&&<div className="analysis-section"><h3>ML limitations</h3><ul>{limitations.slice(0,20).map((x:any,i:number)=><li key={i}>{String(x)}</li>)}</ul></div>}
     <p className="inline-note">Numerical values and anomaly calculations originate from the deterministic ML service. The LLM explanation follows below.</p>
   </section>;
