@@ -1,9 +1,10 @@
 """FastAPI entry point for the Solar Recovery Intelligence local LLM service."""
 import os
 from contextlib import asynccontextmanager
+from secrets import compare_digest
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.concurrency import run_in_threadpool
 
@@ -13,6 +14,8 @@ from schemas import AnalysisRequest, AnalysisResponse, AnalyzeResponse
 load_dotenv()
 MODEL_NAME = os.getenv("MODEL_NAME", "Qwen/Qwen3.5-0.8B")
 ADAPTER_PATH = os.getenv("ADAPTER_PATH", "models/solar-qwen-lora-final")
+INTERNAL_SERVICE_TOKEN = os.getenv("INTERNAL_SERVICE_TOKEN", "")
+ENVIRONMENT = os.getenv("ENVIRONMENT", "development").lower()
 CORS_ORIGINS = [x.strip() for x in os.getenv(
     "CORS_ORIGINS", "http://localhost:3000,http://localhost:5173"
 ).split(",") if x.strip()]
@@ -24,7 +27,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="Solar Recovery Intelligence API", version="1.0.0")
+app = FastAPI(title="Solar Recovery Intelligence API", version="1.1.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
@@ -46,8 +49,16 @@ def ready():
     return {"status": "ready" if loaded else "not_loaded", "model_loaded": loaded}
 
 
+def authorize_service(token: str | None) -> None:
+    if INTERNAL_SERVICE_TOKEN and (not token or not compare_digest(token, INTERNAL_SERVICE_TOKEN)):
+        raise HTTPException(status_code=401, detail="Service authentication failed.")
+    if not INTERNAL_SERVICE_TOKEN and ENVIRONMENT == "production":
+        raise HTTPException(status_code=503, detail="Internal service authentication is not configured.")
+
+
 @app.post("/api/v1/analyze", response_model=AnalyzeResponse)
-async def analyze(request: AnalysisRequest) -> AnalyzeResponse:
+async def analyze(request: AnalysisRequest, x_service_token: str | None = Header(None)) -> AnalyzeResponse:
+    authorize_service(x_service_token)
     service: LLMService = app.state.llm_service
     try:
         analysis: AnalysisResponse = await run_in_threadpool(service.analyze, request)
