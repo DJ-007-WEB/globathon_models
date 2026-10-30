@@ -13,10 +13,13 @@ import tempfile
 from pathlib import Path
 from typing import Literal
 
+from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, Header, HTTPException, UploadFile
 from starlette.concurrency import run_in_threadpool
 
 from src.pipeline import run_pipeline
+
+load_dotenv()
 
 MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_BYTES", str(25 * 1024 * 1024)))
 ENVIRONMENT = os.getenv("ENVIRONMENT", "development").lower()
