@@ -6,3 +6,6 @@ dist/
 !.env.example
 *.log
 .DS_Store
+
+**/.venv/
+llm-service/models/
