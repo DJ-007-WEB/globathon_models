@@ -51,7 +51,7 @@
 @media(max-width:600px) { .field-grid,.metric-grid{grid-template-columns:1fr}.assistant-composer{flex-direction:column}.assistant-composer button{min-height:46px}.analysis-topline{flex-direction:column}.user-question{max-width:100%}.workspace-head h1{font-size:26px} }
 
 
-/* File-first workflow polish */
+/* File-first workflow polish; accessible, file-driven analysis UI. */
 .upload-dropzone{transition:border-color .18s,background .18s,transform .18s}
 .upload-dropzone.drag-active{border-color:var(--green);background:var(--green-soft);transform:translateY(-1px)}
 .upload-dropzone input[type=file]{display:block;width:100%;margin-top:5px;color:var(--ink-2);font-size:13px}
