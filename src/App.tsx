@@ -130,7 +130,7 @@ export default function App() {
   }, []);
   useEffect(() => { document.documentElement.dataset.theme=theme; try{localStorage.setItem("solarsleuth_theme",theme)}catch{} },[theme]);
   const checkReady = useCallback(async () => {
-    try { const r=await fetch(apiBase+"/ready",{signal:AbortSignal.timeout(4500)}); const j=await r.json(); const checks={ml:Boolean(j.ml_service_reachable),llm:Boolean(j.llm_api_reachable),model:Boolean(j.model_loaded)}; setServiceChecks(checks); setReady(r.ok&&checks.ml&&checks.llm?(checks.model?"ready":"warming"):"offline"); }
+    try { const r=await fetch(apiBase+"/ready",{signal:AbortSignal.timeout(8000)}); const j=await r.json(); const checks={ml:Boolean(j.ml_service_reachable),llm:Boolean(j.llm_api_reachable),model:Boolean(j.model_loaded)}; setServiceChecks(checks); setReady(r.ok&&checks.ml&&checks.llm?(checks.model?"ready":"warming"):"offline"); }
     catch { setServiceChecks({ml:false,llm:false,model:false}); setReady("offline"); }
   },[apiBase]);
   useEffect(() => { void checkReady(); const id=window.setInterval(()=>void checkReady(),15000); return ()=>window.clearInterval(id); },[checkReady]);
@@ -189,7 +189,7 @@ export default function App() {
     setError("");setBusy(true);setUploadStage("running");setPage("assistant");
     setTurns(old=>[...old,{id,question:`Dataset analysis: ${datasetFile.name}`,createdAt:Date.now(),loading:true}]);
     try{
-      const response=await fetch(apiBase+"/api/v1/analyze/upload",{method:"POST",body:form,signal:AbortSignal.timeout(360000)});
+      const response=await fetch(apiBase+"/api/v1/analyze/upload",{method:"POST",body:form,signal:AbortSignal.timeout(540000)});
       const raw=await response.json().catch(() => ({}));
       if(!response.ok)throw new Error(typeof raw.detail==="string"?raw.detail:raw.detail?.message || `Analysis request failed (HTTP ${response.status}).`);
       if(!raw.ml_analysis) throw new Error("The backend response did not include the deterministic ML result.");
