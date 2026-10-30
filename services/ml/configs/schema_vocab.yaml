@@ -1,0 +1,537 @@
+# Semantic vocabulary used by the deterministic schema mapper.
+# Aliases are normalized (lower-cased, accents stripped, separators collapsed)
+# before matching.  Add variants here rather than in plant-specific code.
+#
+# Unit aliases are only used when the unit token appears in the original header.
+# A bare magnitude is never used to infer a unit.
+
+vocab_version: "1.0.0"
+
+normalization:
+  lowercase: true
+  strip_accents: true
+  # Characters that separate a header into searchable tokens.
+  token_separators: [" ", "_", "-", ".", "/", "\\", "(", ")", "[", "]", "{", "}", ":", ";", ",", "\t", "\n", "\r"]
+  compact_replacements:
+    "²": "2"
+    "³": "3"
+    "°": "deg"
+
+roles:
+  timestamp:
+    description: Date/time or separate date and time columns.
+    unit_family: null
+    aliases:
+      - timestamp
+      - time stamp
+      - datetime
+      - date time
+      - date_time
+      - ts
+      - time
+      - date
+      - reading time
+      - measurement time
+      - sample time
+      - timestamp local
+      - timestamp utc
+      - fecha
+      - hora
+      - fecha hora
+      - datum
+      - zeit
+      - samay
+
+  irradiance_poa:
+    description: Irradiance measured in the plane of the array (tilted / module plane).
+    unit_family: irradiance
+    aliases:
+      - poa
+      - poa irradiance
+      - poa irradiance w m2
+      - poa irradiance wm2
+      - gpoa
+      - gti
+      - front gpoa
+      - rear gpoa
+      - plane of array
+      - plane of array irradiance
+      - tilted irradiance
+      - module irradiance
+      - array irradiance
+      - incident irradiance
+      - in plane irradiance
+      - irradiancia poa
+      - irradiance plan
+
+  irradiance_ghi:
+    description: Site horizontal irradiance (global horizontal / pyranometer).
+    unit_family: irradiance
+    aliases:
+      - ghi
+      - ghi w m2
+      - global horizontal
+      - global horizontal irradiance
+      - horizontal irradiance
+      - global irradiance
+      - site irradiance
+      - pyranometer
+      - irradiancia global
+      - irradiance horizontale
+
+  ambient_temperature:
+    description: Ambient / air temperature.
+    unit_family: temperature
+    aliases:
+      - ambient temperature
+      - ambient temperature c
+      - ambient temp
+      - amb temp
+      - ambient temp.
+      - amb. temp.
+      - air temperature
+      - air temp
+      - dry bulb
+      - dry bulb temperature
+      - site temperature
+      - outside temperature
+      - temperature ambient
+      - temperatura ambiente
+      - temp ambiante
+      - umgebungstemperatur
+
+  module_temperature:
+    description: PV module / cell back-sheet temperature.
+    unit_family: temperature
+    aliases:
+      - module temperature
+      - module temperature c
+      - module temp
+      - mod temp
+      - temp mod
+      - temp. mod.
+      - temp module
+      - cell temperature
+      - cell temp
+      - panel temperature
+      - panel temp
+      - backsheet temperature
+      - back sheet temperature
+      - pv temperature
+      - temperatura modulo
+      - temperatura modulo
+      - module Temperatur
+
+  power_ac:
+    description: AC active power at the inverter or plant meter.
+    unit_family: power
+    aliases:
+      - ac power
+      - ac power kw
+      - power ac kw
+      - ac output
+      - active power
+      - real power
+      - output power
+      - inverter power
+      - inverter output
+      - pac
+      - p ac
+      - potencia ac
+      - potencia activa
+      - puissance active
+
+  power_dc:
+    description: DC power at the array / inverter DC input.
+    unit_family: power
+    aliases:
+      - dc power
+      - dc power kw
+      - dc output
+      - dc input
+      - array power
+      - pdc
+      - p dc
+      - pmpp
+      - p mpp
+      - potencia dc
+      - potencia continua
+
+  energy_interval:
+    description: Energy generated during one interval (not cumulative).
+    unit_family: energy
+    aliases:
+      - interval energy
+      - interval energy kwh
+      - energy kwh
+      - energy interval
+      - energy per interval
+      - period energy
+      - interval yield
+      - energy generated
+      - generation
+      - production
+      - energia intervalo
+      - energie intervalle
+
+  energy_cumulative:
+    description: Cumulative meter / lifetime counter reading.
+    unit_family: energy
+    aliases:
+      - cumulative energy
+      - cumulative energy kwh
+      - total energy
+      - total yield
+      - lifetime energy
+      - meter reading
+      - meter energy
+      - cumulative yield
+      - cumulative generation
+      - running total
+      - aggregate energy
+      - energia acumulada
+      - energie cumulee
+
+  device_id:
+    description: Identifier of an inverter, meter, string or other monitored device.
+    unit_family: null
+    aliases:
+      - device id
+      - device
+      - device name
+      - inverter id
+      - inverter
+      - inv
+      - source key
+      - source
+      - asset id
+      - asset
+      - equipment id
+      - equipment
+      - unit id
+      - unit
+      - meter id
+      - meter
+      - string id
+      - channel id
+      - station id
+      - weather station
+      - tag
+      - identificador
+      - dispositivo
+      - inversor
+      - gerat
+      - upakarann id
+
+  capacity:
+    description: Rated / installed DC or AC capacity.
+    unit_family: capacity
+    aliases:
+      - capacity
+      - capacity kw
+      - rated capacity
+      - rated ac power kw
+      - ac capacity kw
+      - installed capacity
+      - nominal capacity
+      - nameplate capacity
+      - plant capacity
+      - inverter capacity
+      - rated power
+      - nominal power
+      - installed power
+      - capacity installed
+      - nominal capacity installed
+      - capacidad
+      - potencia nominal
+      - puissance nominale
+      - nennleistung
+
+  dc_capacity:
+    description: Rated DC / array capacity at standard test conditions.
+    unit_family: capacity
+    aliases:
+      - dc capacity
+      - rated dc power kw
+      - rated dc power
+      - dc capacity kw
+      - rated dc kw
+      - array capacity
+      - dc installed capacity
+
+  inverter_efficiency:
+    description: Inverter conversion efficiency as a fraction or percentage.
+    unit_family: null
+    aliases:
+      - inverter efficiency
+      - efficiency
+      - eta inverter
+      - conversion efficiency
+
+  system_losses:
+    description: Fraction of DC energy lost before the inverter.
+    unit_family: null
+    aliases:
+      - system losses fraction
+      - system losses
+      - losses fraction
+      - system loss
+      - soiling and mismatch losses
+
+  temperature_coefficient:
+    description: Module power temperature coefficient per degree Celsius.
+    unit_family: null
+    aliases:
+      - module temperature coefficient per c
+      - temperature coefficient per c
+      - temperature coefficient
+      - gamma
+      - power temperature coefficient
+
+  sun_elevation:
+    description: Solar elevation angle above the horizon.
+    unit_family: null
+    aliases:
+      - solar elevation deg
+      - solar elevation
+      - sun elevation deg
+      - sun elevation
+      - elevation angle
+
+  latitude:
+    description: Site latitude in decimal degrees.
+    unit_family: null
+    aliases:
+      - latitude deg
+      - latitude
+      - site latitude
+
+  longitude:
+    description: Site longitude in decimal degrees.
+    unit_family: null
+    aliases:
+      - longitude deg
+      - longitude
+      - site longitude
+
+  forecast_energy:
+    description: Forecast energy for one interval, not measured energy.
+    unit_family: energy
+    aliases:
+      - forecast energy kwh
+      - forecast energy
+      - forecasted energy
+      - predicted energy
+      - expected energy kwh
+
+  forecast_power:
+    description: Forecast AC power for one interval, not measured power.
+    unit_family: power
+    aliases:
+      - forecast ac power kw
+      - forecast power kw
+      - forecast ac power
+      - forecast power
+      - predicted power
+      - expected power kw
+
+  forecast_poa:
+    description: Forecast plane-of-array irradiance for one interval.
+    unit_family: irradiance
+    aliases:
+      - forecast poa irradiance w m2
+      - forecast poa irradiance
+      - forecast poa
+      - predicted irradiance
+
+  availability_status:
+    description: Operating / availability / communication state.
+    unit_family: null
+    aliases:
+      - status
+      - status code
+      - state
+      - availability
+      - operating state
+      - operating status
+      - inverter status
+      - device status
+      - condition
+      - curtailment flag
+      - curtailed
+      - online
+      - estado
+      - etat
+
+  forecast:
+    description: Design or operational forecast of power or energy.
+    unit_family: null
+    aliases:
+      - forecast
+      - forecasted
+      - predicted
+      - prediction
+      - expected
+      - expected generation
+      - expected energy
+      - design generation
+      - design energy
+      - design forecast
+      - scheduled generation
+      - projection
+      - pronostico
+      - prevision
+
+  event_description:
+    description: Free-text event / operator log description.
+    unit_family: null
+    aliases:
+      - event
+      - event description
+      - event text
+      - description
+      - remark
+      - remarks
+      - comment
+      - comments
+      - notes
+      - note
+      - reason
+      - cause
+      - log message
+      - message
+      - evento
+      - descripcion
+
+  event_start:
+    description: Event or outage start time.
+    unit_family: null
+    aliases:
+      - event start
+      - event start time
+      - start time
+      - start timestamp
+      - outage start
+      - fault start
+      - from time
+      - begin time
+      - inicio evento
+      - debut evenement
+
+  event_end:
+    description: Event or outage end time.
+    unit_family: null
+    aliases:
+      - event end
+      - event end time
+      - end time
+      - end timestamp
+      - outage end
+      - fault end
+      - to time
+      - finish time
+      - fin evento
+      - fin evenement
+
+# Unit families.  Canonical units are the units retained internally.
+units:
+  power:
+    canonical: kW
+    aliases:
+      W: [w, watt, watts]
+      kW: [kw, kilowatt, kilowatts]
+      MW: [mw, megawatt, megawatts]
+  energy:
+    canonical: kWh
+    aliases:
+      Wh: [wh, watthour, watt hour, watt hours]
+      kWh: [kwh, kilowatt hour, kilowatt hours]
+      MWh: [mwh, megawatt hour, megawatt hours]
+  irradiance:
+    canonical: W/m2
+    aliases:
+      W/m2: [w/m2, wm2, w m2, watt/m2, watt per square meter, watts per square meter]
+      kW/m2: [kw/m2, kwm2, kw m2, kilowatt/m2, kilowatt per square meter]
+  temperature:
+    canonical: C
+    aliases:
+      C: [c, degc, deg c, celsius, degree celsius, degrees celsius]
+      F: [f, degf, deg f, fahrenheit, degree fahrenheit, degrees fahrenheit]
+  capacity:
+    canonical: kW
+    aliases:
+      Wp: [wp, watt peak, watts peak]
+      kWp: [kwp, kilowatt peak, kilowatts peak]
+      MWp: [mwp, megawatt peak, megawatts peak]
+      kW: [kw]
+      MW: [mw]
+
+# Tokens that identify measurement context but are not device identifiers.
+device_label_stopwords:
+  - ac
+  - dc
+  - poa
+  - ghi
+  - gpoa
+  - gti
+  - active
+  - reactive
+  - real
+  - apparent
+  - power
+  - output
+  - input
+  - energy
+  - yield
+  - generation
+  - production
+  - interval
+  - cumulative
+  - total
+  - daily
+  - lifetime
+  - meter
+  - reading
+  - temperature
+  - temp
+  - ambient
+  - module
+  - cell
+  - panel
+  - backsheet
+  - irradiance
+  - irradiancia
+  - horizontal
+  - global
+  - tilted
+  - plane
+  - array
+  - site
+  - plant
+  - forecast
+  - expected
+  - predicted
+  - status
+  - state
+  - availability
+  - capacity
+  - rated
+  - nominal
+  - installed
+  - nameplate
+  - w
+  - kw
+  - mw
+  - wh
+  - kwh
+  - mwh
+  - wp
+  - kwp
+  - mwp
+  - c
+  - f
+  - degc
+  - degf
+  - m2
+  - min
+  - hour

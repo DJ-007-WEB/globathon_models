@@ -1,0 +1,28 @@
+# Local artifacts
+artifacts/
+reports/*.csv
+reports/*.json
+reports/*.png
+
+# Generated data
+data/raw_public/
+data/raw_real_validation/
+data/synthetic/
+data/processed/
+
+# Model artifacts
+*.pkl
+*.joblib
+*.model
+*.bin
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Environment files
+.venv/
+venv/
+.env
