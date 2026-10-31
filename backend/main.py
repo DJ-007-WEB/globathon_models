@@ -291,6 +291,27 @@ async def _run_ml(content: bytes, filename: str, *, plant_id: str, mode: str,
         raise HTTPException(status_code=502, detail="The ML service returned an unknown analysis status.")
     return result
 
+
+async def _post_llm(payload: dict) -> dict:
+    response = await _request_service(
+        "POST", f"{LLM_API_URL}/api/v1/analyze",
+        timeout_seconds=LLM_TIMEOUT_SECONDS,
+        json=payload,
+    )
+    if response.status_code >= 400:
+        if response.status_code in (401, 403):
+            raise HTTPException(status_code=502, detail="The local LLM rejected internal service authentication.")
+        if response.status_code in (503, 504):
+            raise HTTPException(status_code=503, detail="The local LLM service is unavailable or not ready.")
+        raise HTTPException(status_code=502, detail="The local LLM could not produce an explanation.")
+    try:
+        value = response.json()
+    except ValueError as exc:
+        raise HTTPException(status_code=502, detail="The local LLM returned invalid JSON.") from exc
+    if not isinstance(value, dict):
+        raise HTTPException(status_code=502, detail="The local LLM returned an invalid response object.")
+    return value
+
 @app.post("/api/v1/auth/register")
 async def register_account(payload: RegisterPayload) -> dict:
     db = _database_required()
