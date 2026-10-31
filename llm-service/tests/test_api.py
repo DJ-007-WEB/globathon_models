@@ -53,6 +53,26 @@ def test_warmup_loads_model_and_updates_readiness(monkeypatch):
         assert ready["last_inference_error"] is None
 
 
+def test_response_normalization_removes_bare_keys_and_maps_confidence():
+    from llm_service import LLMService
+
+    normalized = LLMService._normalize_response({
+        "summary": "analysis_status is partial; actual_energy is 12.5 kWh.",
+        "observations": ["actual_energy", "Measured energy is 12.5 kWh."],
+        "possible_causes": [],
+        "supporting_evidence": ["ml_results shows a persistent finding."],
+        "recommended_checks": ["Review device_id INV-01."],
+        "limitations": [],
+        "confidence": "medium",
+    })
+    assert "analysis status" in normalized["summary"]
+    assert "measured energy is 12.5 kWh" in normalized["summary"]
+    assert normalized["observations"] == ["Measured energy is 12.5 kWh."]
+    assert "deterministic ML findings" in normalized["supporting_evidence"][0]
+    assert "device identifier INV-01" in normalized["recommended_checks"][0]
+    assert normalized["confidence"] == "moderate"
+
+
 def test_analyze_returns_backend_contract(monkeypatch):
     expected = AnalysisResponse(
         summary="The supplied ML result reports partial underperformance; verify the evidence.",
