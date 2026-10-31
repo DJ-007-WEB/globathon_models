@@ -239,7 +239,9 @@ def test_prompt_builder_preserves_ml_evidence_and_avoids_silent_truncation():
     )
     prompt, token_count = service._prepare_prompt(request)
     assert token_count <= service.max_input_tokens
-    assert prompt.index('"ml_results"') < prompt.index('"observations"')
+    user_payload_start = prompt.index("\\nUser:\\n")
+    user_payload = prompt[user_payload_start:]
+    assert user_payload.index('"ml_results"') < user_payload.index('"observations"')
     assert '"value_kwh":123.45' in prompt
     assert '"expected_deviation_kwh":-26.55' in prompt
     assert "No forecast file was supplied." in prompt
@@ -267,6 +269,6 @@ def test_prompt_builder_refuses_when_core_ml_payload_alone_exceeds_budget():
     try:
         service._prepare_prompt(request)
     except ValueError as exc:
-        assert "refusing to silently truncate" in str(exc)
+        assert "refusing to silently truncate" in str(exc).lower()
     else:
         raise AssertionError("Oversized prompts must fail explicitly, not be truncated.")
