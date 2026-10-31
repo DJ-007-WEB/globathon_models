@@ -14,7 +14,7 @@ from src.synthetic import generate_batch
 
 def _assert_contract(result: dict) -> None:
     validate_contract(result)
-    assert result["schema_version"] == "2.0.0"
+    assert result["schema_version"] == "2.1.0"
     assert result["analysis_status"] in {"success", "partial", "invalid_input", "failed"}
     assert result["analysis_mode"] in {"snapshot", "full"}
     assert set(result["energy"]) == {"forecast", "expected", "actual", "deviation"}
