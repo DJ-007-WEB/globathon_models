@@ -228,3 +228,8 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
   .report-ml,.report-content{color:#111!important}
   .chat-launcher,.chat-panel{display:none!important}
 }
+
+.chat-answer-text p{margin:0 0 10px;line-height:1.75}
+.chat-answer-text h4{font:750 13px var(--display);margin:15px 0 7px;color:var(--ink)}
+.chat-answer-text .chat-markdown-list-item{padding-left:8px;margin:4px 0 4px 5px;color:var(--ink-2);line-height:1.7}
+.chat-answer-text .chat-markdown-spacer{height:7px}
