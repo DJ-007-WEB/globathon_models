@@ -154,7 +154,8 @@ async def analyze_upload(
             raise HTTPException(status_code=413, detail=f"Combined upload exceeds the {MAX_UPLOAD_BYTES // (1024 * 1024)} MiB limit.")
         validate_upload(filename, content)
         prefix = "event_log" if role == "event" else role
-        contents.append((f"{prefix}_{filename}", content))
+        # "role__" marks the slot the file was uploaded in; it is stripped from reported names.
+        contents.append((f"{prefix}__{filename}", content))
 
     try:
         await asyncio.wait_for(ANALYSIS_SLOTS.acquire(), timeout=0.1)

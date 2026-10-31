@@ -237,3 +237,33 @@ def test_hypothesis_cap_keeps_event_attributed_hypotheses_and_reports_truncation
     assert len(hypotheses) == 3
     assert sum(item["cause"] == "logged_outage_or_curtailment" for item in hypotheses) == 2
     assert any("Hypotheses truncated: 3 of" in item for item in limitations)
+
+
+def test_files_uploaded_under_the_wrong_role_are_reassigned_by_content(raw_inputs):
+    result = analyze({
+        "operating_data": raw_inputs["weather"],   # weather put in the operating slot
+        "weather_data": raw_inputs["forecast"],
+        "forecast_data": raw_inputs["operating"],
+    })
+    validate_contract(result)
+    roles = {item["role"]: item["source_file"] for item in result["input_roles"]}
+    assert roles["operating"].endswith(".xlsx")
+    assert "weather" in roles["weather"] and "forecast" in roles["forecast"]
+    assert result["energy"]["actual"]["value_kwh"] is not None
+    assert result["energy"]["forecast"]["value_kwh"] is not None
+    assert sum("was uploaded as" in item for item in result["limitations"]) == 3
+
+
+def test_weather_stamp_marks_the_start_of_its_interval():
+    times = pd.date_range("2026-03-01T06:00:00Z", periods=8, freq="15min")
+    operating = pd.DataFrame({"timestamp_utc": times, "ac_power_kw": 10.0, "rated_ac_power_kw": 50.0})
+    hours = pd.date_range("2026-03-01T05:30:00Z", periods=3, freq="1h")
+    weather = pd.DataFrame({"timestamp_utc": hours, "poa_irradiance_w_m2": [100.0, 200.0, 300.0]})
+    from src.config import load_defaults, load_vocab
+    from src.service import _load_inputs, _merge_context
+
+    bundle = _load_inputs({"operating_data": operating, "weather_data": weather}, config=load_defaults(),
+                          vocab=load_vocab(), timezone=None, interval_minutes=None, plant_id=None, sheet_name=None)
+    merged, _ = _merge_context(bundle.operating.frame, None, bundle.weather)
+    # 06:00-06:15 use the 05:30 hour; 06:30-07:15 the 06:30 hour; 07:30-07:45 the 07:30 hour.
+    assert merged["poa_irradiance_w_m2"].tolist() == [100.0, 100.0, 200.0, 200.0, 200.0, 200.0, 300.0, 300.0]

@@ -24,7 +24,7 @@ def test_upload_calls_existing_pipeline(monkeypatch):
     def fake_pipeline(path, output_path=None, **kwargs):
         captured.update(kwargs)
         assert Path(path).is_dir()
-        with open(Path(path) / "operating_plant.csv", "rb") as handle:
+        with open(Path(path) / "operating__plant.csv", "rb") as handle:
             captured["content"] = handle.read()
         return {"schema_version": "2.0.0", "analysis_status": "partial", "analysis_mode": "snapshot"}
 
@@ -185,9 +185,9 @@ def test_upload_passes_optional_context_files_as_named_directory_inputs(monkeypa
             },
         )
     assert response.status_code == 200, response.text
-    assert "operating_plant.csv" in captured["files"]
-    assert "forecast_forecast.csv" in captured["files"]
-    assert "weather_weather.csv" in captured["files"]
+    assert "operating__plant.csv" in captured["files"]
+    assert "forecast__forecast.csv" in captured["files"]
+    assert "weather__weather.csv" in captured["files"]
 
 
 def test_upload_enforces_row_column_and_decompression_limits(monkeypatch):
@@ -212,12 +212,12 @@ def test_upload_enforces_row_column_and_decompression_limits(monkeypatch):
 def test_role_prefix_wins_over_words_in_the_uploaded_file_name(tmp_path):
     from src.service import _classify_directory
 
-    for name in ("operating_weather_station_logger.csv", "weather_forecast_city.csv", "forecast_design.csv"):
+    for name in ("operating__weather_station_logger.csv", "weather__forecast_city.csv", "forecast__design.csv"):
         (tmp_path / name).write_text("timestamp,value\n2026-01-01T00:00:00Z,1\n")
     operating, optional, _ = _classify_directory(tmp_path)
-    assert operating.name == "operating_weather_station_logger.csv"
-    assert optional["weather"].name == "weather_forecast_city.csv"
-    assert optional["forecast"].name == "forecast_design.csv"
+    assert operating.name == "operating__weather_station_logger.csv"
+    assert optional["weather"].name == "weather__forecast_city.csv"
+    assert optional["forecast"].name == "forecast__design.csv"
 
 
 def test_analysis_output_never_exposes_server_temp_paths():
@@ -231,4 +231,4 @@ def test_analysis_output_never_exposes_server_temp_paths():
     text = json.dumps(response.json())
     assert "solarsleuth-ml-" not in text and "/tmp/" not in text
     assert "plant.csv" in response.json()["request"]["source_files"]
-    assert "operating_plant.csv" not in text
+    assert "operating__plant.csv" not in text

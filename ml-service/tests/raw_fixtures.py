@@ -58,7 +58,8 @@ def write_raw_inputs(
     })
     units = pd.DataFrame([["dd-mm-yyyy hh:mm", "W/m²", "W/m²", "°C", "°C", "kW", "kW", "kW", "kW", "", ""]],
                          columns=data.columns)
-    data = pd.concat([units, data], ignore_index=True)
+    blank = pd.DataFrame([[None] * len(data.columns)], columns=data.columns)
+    data = pd.concat([units, blank, data], ignore_index=True)  # header, units row, blank row, data
     info = pd.DataFrame({
         "Parameter": ["Timezone", "Interval", "Latitude", "Longitude", "Plant AC capacity (kW)",
                       "Plant DC capacity (kWp)", "E_Grid_*", "EArray_*"],
@@ -69,7 +70,7 @@ def write_raw_inputs(
     devices = pd.DataFrame({
         "device_id": ["INV1", "INV2", "WS1"],
         "device_type": ["inverter", "inverter", "weather_station"],
-        "ac_kw": [capacity_ac, capacity_ac, None],
+        "rated_ac_kw": [capacity_ac, capacity_ac, None],
         "dc_kwp": [capacity_dc, capacity_dc, None],
     })
     events = pd.DataFrame({
@@ -93,19 +94,21 @@ def write_raw_inputs(
     hourly = pd.date_range("2026-01-01 00:30", "2026-12-31 23:30", freq="1h")
     wsun = _sun(hourly)
     weather = pd.DataFrame({
-        "Time": hourly.strftime("%Y-%m-%d %H:%M"),
+        "date": hourly.strftime("%d-%m-%Y %H:%M"),
         "GHI": (850.0 * wsun).round(1), "DNI": (700.0 * wsun).round(1), "DHI": (150.0 * wsun).round(1),
         "T_Amb": (20.0 + 10.0 * wsun).round(1), "WS": 2.0,
     })
-    weather_units = pd.DataFrame([["", "W/m2", "W/m2", "W/m2", "degC", "m/s"]], columns=weather.columns)
+    weather_units = pd.DataFrame([["", "W/m²", "W/m²", "W/m²", "°C", "m/s"]], columns=weather.columns)
+    weather_blank = pd.DataFrame([[None] * len(weather.columns)], columns=weather.columns)
     weather_path = directory / "weather_city_typical_year_hourly.csv"
-    pd.concat([weather_units, weather], ignore_index=True).to_csv(weather_path, index=False)
+    pd.concat([weather_units, weather_blank, weather], ignore_index=True).to_csv(weather_path, index=False)
 
     # --- design forecast: hourly, local, expected AC power -----------------------------
-    fh = pd.date_range("2026-01-01 00:00", "2026-12-31 23:00", freq="1h")
+    fh = pd.date_range("2026-01-01 00:30", "2026-12-31 23:30", freq="1h")
     fsun = _sun(fh + pd.Timedelta(minutes=30))
     forecast = pd.DataFrame({
-        "timestamp": fh.strftime("%Y-%m-%d %H:%M"),
+        # ISO with an explicit offset, stamped at :30 like the weather file.
+        "timestamp": fh.strftime("%Y-%m-%d %H:%M:%S") + "+05:30",
         "design_poa_w_m2": (1000.0 * fsun).round(2),
         "design_cell_temp_c": (25.0 + 30.0 * fsun).round(2),
         "design_expected_ac_kw": (2 * capacity_dc * fsun * 0.93).round(3),

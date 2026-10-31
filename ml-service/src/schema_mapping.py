@@ -202,9 +202,31 @@ def _alias_score(normalized: str, tokens: set[str], alias: str) -> float:
     return 0.0
 
 
-def score_header_roles(header: Any, vocab: dict[str, Any], config: dict[str, Any]) -> list[dict[str, Any]]:
-    """Return role candidates for a header, highest score first."""
+_SCORE_CACHE: dict[tuple, list[dict[str, Any]]] = {}
 
+
+def score_header_roles(header: Any, vocab: dict[str, Any], config: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return role candidates for a header, highest score first.
+
+    Results are cached per header for a given vocabulary and fuzzy settings:
+    header detection scores many cells and wide sheets repeat the same names.
+    """
+    key = (
+        id(vocab.get("roles")), vocab.get("vocab_version"),
+        get_path(config, "mapping.fuzzy_min_alias_length", 4),
+        get_path(config, "mapping.fuzzy_min_ratio", 0.84),
+        str(header),
+    )
+    cached = _SCORE_CACHE.get(key)
+    if cached is None:
+        if len(_SCORE_CACHE) > 50000:
+            _SCORE_CACHE.clear()
+        cached = _score_header_roles(header, vocab, config)
+        _SCORE_CACHE[key] = cached
+    return [dict(item) for item in cached]
+
+
+def _score_header_roles(header: Any, vocab: dict[str, Any], config: dict[str, Any]) -> list[dict[str, Any]]:
     normalized = normalize_text(header)
     tokens = set(tokenize(header))
     roles = vocab.get("roles", {})

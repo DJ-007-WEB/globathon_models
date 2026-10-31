@@ -241,6 +241,8 @@ def detect_header_row(
         text_ratio = sum(1 for value in values if not _numeric_like(value)) / len(values)
         vocab_hits = 0
         for value in values:
+            if _numeric_like(value):
+                continue  # a number is never a header name
             scores = score_header_roles(value, vocab, config)
             if scores and scores[0]["score"] >= 0.60:
                 vocab_hits += 1

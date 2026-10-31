@@ -196,7 +196,8 @@ class InputBundle:
     input_roles: dict[str, dict[str, Any]] = field(default_factory=dict)
 
 
-_UPLOAD_ROLE_PREFIXES = ("event_log_", "operating_", "weather_", "devices_", "forecast_")
+# The HTTP adapter stores each upload as "<role>__<original name>".
+_UPLOAD_ROLE_PREFIXES = ("event_log__", "operating__", "weather__", "devices__", "forecast__")
 
 
 def _safe_name(value: Any) -> str:
@@ -553,6 +554,79 @@ def _load_workbook_roles(
 
 
 
+_POWER_ROLES = {"power_ac", "power_dc", "energy_interval", "energy_cumulative"}
+_WEATHER_ROLES = {"irradiance_ghi", "irradiance_poa", "irradiance_dni", "irradiance_dhi", "ambient_temperature"}
+
+
+def _sniff_role(path: Path, *, config: dict[str, Any], vocab: dict[str, Any]) -> str | None:
+    """Classify a supplied file by content: operating, weather, forecast, devices or event_log."""
+    try:
+        result = ingest_file(path, config=config, vocab=vocab)
+    except Exception:  # noqa: BLE001 - unreadable files are reported by the regular loader
+        return None
+    tables = [table for table in result.tables if not table.frame.empty]
+    if not tables:
+        return None
+    sheet_roles = [_classify_sheet(table, config, vocab) for table in tables]
+    for table, sheet_role in zip(tables, sheet_roles):
+        if sheet_role != "operating":
+            continue
+        roles = set(map_table(table, config=config, vocab=vocab).role_to_columns)
+        # Operating data must contain measured power or energy; irradiance alone is weather.
+        if roles & _POWER_ROLES:
+            return "operating"
+        if roles & {"forecast_power", "forecast_energy"}:
+            return "forecast"
+    table = tables[0]
+    roles = set(map_table(table, config=config, vocab=vocab).role_to_columns)
+    if roles & {"forecast_power", "forecast_energy"}:
+        return "forecast"
+    if sheet_roles[0] in {"event_log", "devices"}:
+        return sheet_roles[0]
+    if roles & _WEATHER_ROLES and (table.timestamp or {}).get("status") != "not_found":
+        return "weather"
+    return None
+
+
+def _assign_roles_by_content(
+    values: dict[str, Any], *, config: dict[str, Any], vocab: dict[str, Any]
+) -> tuple[dict[str, Any], list[str]]:
+    """Correct files supplied under the wrong role (e.g. weather uploaded as operating data).
+
+    Only acts when the operating input has no power or energy data and exactly one
+    other supplied file does; every move is reported.
+    """
+    operating = values.get("operating")
+    paths = {role: Path(value) for role, value in values.items()
+             if isinstance(value, (str, Path)) and Path(value).exists()}
+    if "operating" not in paths or len(paths) < 2:
+        return values, []
+    if _sniff_role(paths["operating"], config=config, vocab=vocab) == "operating":
+        return values, []
+    sniffed = {role: _sniff_role(path, config=config, vocab=vocab) for role, path in paths.items()}
+    candidates = [role for role, kind in sniffed.items() if kind == "operating" and role != "operating"]
+    if len(candidates) != 1:
+        return values, []
+    corrected: dict[str, Any] = {role: value for role, value in values.items() if role not in paths}
+    moves: list[str] = []
+    for role, path in paths.items():
+        target = sniffed.get(role) or role
+        if role == candidates[0]:
+            target = "operating"
+        elif role == "operating":
+            target = sniffed.get(role) or candidates[0]
+        if corrected.get(target) is not None:
+            moves.append(f"{_safe_name(path)} was not used: another file already supplies {target.replace('_', ' ')} data.")
+            continue
+        corrected[target] = path
+        if target != role:
+            moves.append(f"{_safe_name(path)} was uploaded as {role.replace('_', ' ')} data but contains "
+                         f"{target.replace('_', ' ')} data, so it was used as {target.replace('_', ' ')}.")
+    for role in ("operating", "weather", "devices", "forecast", "event_log"):
+        corrected.setdefault(role, None)
+    return corrected, moves
+
+
 def _classify_directory(directory: Path) -> tuple[Path, dict[str, Path], list[str]]:
     files = [
         path
@@ -561,8 +635,8 @@ def _classify_directory(directory: Path) -> tuple[Path, dict[str, Path], list[st
     ]
     operating: list[Path] = []
     optional: dict[str, list[Path]] = {"weather": [], "devices": [], "forecast": [], "event_log": []}
-    role_prefixes = (("operating_", None), ("weather_", "weather"), ("devices_", "devices"),
-                     ("forecast_", "forecast"), ("event_log_", "event_log"))
+    role_prefixes = (("operating__", None), ("weather__", "weather"), ("devices__", "devices"),
+                     ("forecast__", "forecast"), ("event_log__", "event_log"))
     for path in files:
         stem = path.stem.lower()
         if "ground_truth" in stem or stem in {"manifest", "metadata"}:
@@ -742,6 +816,8 @@ def _load_inputs(
             details={"input_type": type(source).__name__},
         )
 
+    values, role_moves = _assign_roles_by_content(values, config=config, vocab=vocab)
+    warnings.extend(role_moves)
     sheet_by_role = _sheet_selection(sheet_name)
     operating_value = values.get("operating")
     workbook_path = (
@@ -1329,11 +1405,13 @@ def _merge_context(
             overlap = [column for column in weather_cols if column in frame.columns]
             selected = weather_frame[keys + missing + overlap].drop_duplicates(subset=keys, keep="first")
             selected = selected.dropna(subset=["__merge_timestamp__"]).sort_values("__merge_timestamp__")
-            # Weather is often stamped differently (e.g. hourly at :30). Match each
-            # operating row to the nearest weather row within half a weather interval.
+            # Weather is often coarser and stamped differently (e.g. hourly at :30).
+            # A weather stamp marks the start of the interval it covers, so each
+            # operating row takes the latest weather row that started at or before it,
+            # within one weather interval.
             steps = selected["__merge_timestamp__"].drop_duplicates().diff().dt.total_seconds()
             step = float(steps[steps > 0].median()) if (steps > 0).any() else None
-            tolerance = pd.Timedelta(seconds=step / 2.0) if step else pd.Timedelta(0)
+            tolerance = pd.Timedelta(seconds=step - 1.0) if step and step > 1.0 else pd.Timedelta(0)
             try:
                 left = frame.assign(__row__=np.arange(len(frame)))
                 valid = left["__merge_timestamp__"].notna()
@@ -1342,7 +1420,7 @@ def _merge_context(
                     selected.rename(columns={column: f"{column}__weather" for column in missing + overlap}),
                     on="__merge_timestamp__",
                     by="scenario_id" if "scenario_id" in keys else None,
-                    direction="nearest",
+                    direction="backward",
                     tolerance=tolerance,
                 ).set_index("__row__")
                 merged = left.set_index("__row__")
@@ -1353,7 +1431,8 @@ def _merge_context(
                     merged[column] = merged[f"{column}__weather"]
                 weather_hit = merged[[f"{column}__weather" for column in missing + overlap]].notna().any(axis=1)
                 coverage = float(weather_hit.mean()) if len(weather_hit) else 0.0
-                rule = f"nearest weather row within {tolerance.total_seconds() / 60:g} min"
+                rule = (f"weather interval starting at or up to {round(tolerance.total_seconds() / 60):g} min "
+                        "before each operating row")
                 if coverage == 0.0:
                     warnings.append(f"Weather timestamps did not overlap the operating data ({rule}); weather was not used.")
                 elif coverage < 0.95:
@@ -2163,12 +2242,15 @@ def _status_and_reasons(
     reasons: list[str] = []
     if mode == "snapshot":
         reasons.append("Snapshot mode cannot establish persistence, peer comparison or trend evidence.")
-    if actual.get("status") != "available":
-        reasons.append("Actual energy is unavailable or partial.")
-    if expected.get("status") != "available":
-        reasons.append("Expected energy is unavailable or partial.")
-    if forecast.get("status") != "available":
-        reasons.append("Forecast energy is unavailable or partial.")
+    for label, component in (("Actual", actual), ("Expected", expected), ("Forecast", forecast)):
+        status = component.get("status")
+        if status == "available":
+            continue
+        state = "partial" if status == "partial" else "unavailable"
+        detail = str(component.get("reason") or "").rstrip(".")
+        completeness = _as_float(component.get("completeness"))
+        coverage = f", {completeness:.1%} of rows valid" if state == "partial" and completeness is not None else ""
+        reasons.append(f"{label} energy is {state}" + (f" ({detail}{coverage})" if detail else "") + ".")
     quality_reason = _quality_issue_reason(quality)
     if quality_reason:
         reasons.append(quality_reason)
