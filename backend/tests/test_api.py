@@ -354,3 +354,33 @@ def test_plant_capacity_rejects_non_finite_values(monkeypatch):
     with pytest.raises(HTTPException) as invalid:
         asyncio.run(main.create_plant(payload, authorization=None))
     assert invalid.value.status_code == 422
+
+def test_streaming_chat_emits_progressive_answer_and_final_structured_payload(monkeypatch):
+    answer = {
+        "summary": "Measured energy is below the expected level.",
+        "observations": ["Measured energy was 12.5 kWh."],
+        "possible_causes": [],
+        "supporting_evidence": ["The ML service reported 12.5 kWh."],
+        "recommended_checks": ["Review the inverter event log."],
+        "limitations": ["Forecast coverage is incomplete."],
+        "confidence": "moderate",
+    }
+
+    async def fake_chat(request_id, payload, authorization):
+        assert request_id == "analysis-1"
+        assert payload.question == "Why is output lower?"
+        return {"answer": answer, "model": "test-model", "created_at": "2026-10-31T00:00:00+00:00"}
+
+    monkeypatch.setattr(main, "ask_about_analysis", fake_chat)
+    with TestClient(main.app) as client:
+        response = client.post(
+            "/api/v1/analyses/analysis-1/chat/stream",
+            json={"question": "Why is output lower?"},
+        )
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/event-stream")
+    assert "event: delta" in response.text
+    assert "Measured energy was 12.5 kWh." in response.text
+    assert "event: done" in response.text
+    assert '"confidence": "moderate"' in response.text
+
