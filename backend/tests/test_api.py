@@ -474,3 +474,30 @@ def test_follow_up_chat_returns_grounded_fallback_when_llm_is_unavailable(monkey
     assert "92.5 kWh" in body["answer"]["summary"]
     assert body["answer"]["possible_causes"] == []
     assert len(db.analysis_messages.inserted) == 2
+
+def test_invalid_llm_output_fallback_preserves_grounded_ml_evidence():
+    result = main._unavailable_llm_explanation({
+        "summary": "The analysis is partial because forecast coverage is missing.",
+        "evidence": ["Measured energy: 125.0 kWh.", "Expected energy: unavailable."],
+        "limitations": ["Forecast input was not supplied."],
+    })
+    assert result["summary"].startswith("The analysis is partial")
+    assert result["observations"] == [
+        "Measured energy: 125.0 kWh.",
+        "Expected energy: unavailable.",
+    ]
+    assert result["possible_causes"] == []
+    assert "Forecast input was not supplied." in result["limitations"]
+    assert result["confidence"] == "insufficient_evidence"
+
+
+def test_invalid_llm_output_fallback_does_not_invent_metrics():
+    result = main._unavailable_llm_explanation({
+        "analysis_status": "partial",
+        "actual_energy": 125.0,
+        "expected_energy": None,
+    })
+    assert "could not be validated" in result["summary"]
+    assert result["observations"] == []
+    assert result["possible_causes"] == []
+    assert result["supporting_evidence"] == []
