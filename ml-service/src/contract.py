@@ -15,7 +15,7 @@ from typing import Any
 
 from jsonschema import Draft202012Validator
 
-SCHEMA_VERSION = "2.0.0"
+SCHEMA_VERSION = "2.1.0"
 MODEL_VERSION = "1.0.0"
 MAPPING_VERSION = "1.0.0"
 
