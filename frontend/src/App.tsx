@@ -12,7 +12,7 @@ type Analysis = {
 type MlAnalysis = Record<string, any>;
 type ApiResult = { request_id?: string | null; plant_id?: string; model?: string; analysis: Analysis; ml_analysis?: MlAnalysis | null; analysis_mode?: string | null };
 type Turn = { id: string; question: string; createdAt: number; result?: ApiResult; error?: string; loading?: boolean };
-type ChatMessage = { role: "user" | "assistant"; content: string | Analysis; created_at?: string };
+type ChatMessage = { role: "user" | "assistant"; content: string | Analysis; created_at?: string; model?: string };
 type Plant = { plant_id: string; name: string; location?: string | null; capacity_kw?: number | null; timezone?: string | null };
 async function loadStoredAnalyses(base: string, token: string): Promise<Turn[]> {
   const headers = { Authorization: "Bearer " + token };
@@ -199,7 +199,7 @@ function AnalysisResponse({result}:{result:ApiResult}) {
     ["Recommended checks",a.recommended_checks,"No checks were returned."],
     ["Limitations and uncertainty",a.limitations,"No limitations were reported."]
   ];
-  return <div className="assistant-response"><div className="assistant-answer-heading"><span className="assistant-mark">✳</span><div><strong>SolarSleuth analysis</strong><small>Evidence-grounded explanation · {pretty(a.confidence||"insufficient_evidence")} confidence</small></div></div>{mlStatus&&<div className="analysis-state-row"><span className={"status-chip "+(mlStatus==="partial"?"status-warn":mlStatus==="success"?"":"status-fail")}>ML analysis: {pretty(String(mlStatus))}</span>{result.model==="unavailable"&&<span className="ai-unavailable-note" role="status">AI explanation unavailable · deterministic ML findings are still available below</span>}</div>}<p className="analysis-summary">{a.summary||"The model did not return a summary."}</p><div className="answer-sections">{sections.map(([title,items,fallback],i)=><section className="answer-section" key={title}><h3><span>{["◉","⌁","↗","✓","ⓘ"][i]}</span>{title}</h3><ul>{listOrFallback(items,fallback).map((x,j)=><li key={j}>{displayValue(x)}</li>)}</ul></section>)}</div><p className="inline-note">AI-generated explanation · Verify hypotheses with plant telemetry and qualified operators.</p></div>;
+  return <div className="assistant-response"><div className="assistant-answer-heading"><span className="assistant-mark">✳</span><div><strong>SolarSleuth analysis</strong><small>Evidence-grounded explanation · {pretty(a.confidence||"insufficient_evidence")} confidence</small></div></div>{mlStatus&&<div className="analysis-state-row"><span className={"status-chip "+(mlStatus==="partial"?"status-warn":mlStatus==="success"?"":"status-fail")}>ML analysis: {pretty(String(mlStatus))}</span>{(result.model==="unavailable"||result.model==="deterministic-fallback")&&<span className="ai-unavailable-note" role="status">{result.model==="deterministic-fallback"?"Local AI unavailable · answering from saved deterministic ML evidence":"AI explanation unavailable · deterministic ML findings are still available below"}</span>}</div>}<p className="analysis-summary">{a.summary||"The model did not return a summary."}</p><div className="answer-sections">{sections.map(([title,items,fallback],i)=><section className="answer-section" key={title}><h3><span>{["◉","⌁","↗","✓","ⓘ"][i]}</span>{title}</h3><ul>{listOrFallback(items,fallback).map((x,j)=><li key={j}>{displayValue(x)}</li>)}</ul></section>)}</div><p className="inline-note">AI-generated explanation · Verify hypotheses with plant telemetry and qualified operators.</p></div>;
 }
 
 function OverviewDashboard({history,plants,selectedPlantId,onPlantChange,onNavigate}:{history:Turn[];plants:Plant[];selectedPlantId:string;onPlantChange:(id:string)=>void;onNavigate:(page:"data"|"report"|"validation"|"assistant")=>void}) {
@@ -448,11 +448,11 @@ export default function App() {
     setChatBusy(true); setChatError(""); setChatInput("");
     setChatMessages(old => [...old, { role: "user", content: question },
       { role: "assistant", content: "Preparing an evidence-grounded response…" }]);
-    const updateStreamingAnswer = (content: string | Analysis) => {
+    const updateStreamingAnswer = (content: string | Analysis, model?: string) => {
       setChatMessages(old => {
         const next = [...old];
         const last = next[next.length - 1];
-        if (last?.role === "assistant") next[next.length - 1] = { ...last, content };
+        if (last?.role === "assistant") next[next.length - 1] = { ...last, content, ...(model ? { model } : {}) };
         return next;
       });
     };
@@ -582,7 +582,7 @@ export default function App() {
           <div className="chat-context-note"><span className="live-dot"/> In context: <strong>{plants.find(p=>p.plant_id===latestTurn.result?.plant_id)?.name||latestTurn.result.plant_id||"Selected plant"}</strong><span>·</span>{latestTurn.question.replace("Dataset analysis: ","")}</div>
           <div className="chat-thread" aria-live="polite">
             {chatMessages.length===0&&<div className="chat-welcome"><span className="assistant-mark">✳</span><div><strong>SolarSleuth</strong><p>I've got the selected plant analysis in context. Ask me to explain a deviation, trace evidence behind a finding, or suggest what to verify next.</p><div className="chat-prompts">{["What is driving the energy deviation?","Which findings have the strongest evidence?","What should the site operator check first?"].map(question=><button key={question} type="button" onClick={()=>setChatInput(question)}>{question}<span>↗</span></button>)}</div></div></div>}
-            {chatMessages.map((message,index)=><article className={"chat-turn "+message.role} key={message.created_at||index}>{message.role==="assistant"&&<span className="assistant-mark">✳</span>}<div className="chat-bubble">{message.role==="user"?<p>{typeof message.content==="string"?message.content:displayValue(message.content)}</p>:typeof message.content==="string"?<div className="chat-answer-text">{renderSafeMarkdown(message.content)}</div>:<AnalysisResponse result={{analysis:message.content as Analysis,plant_id:latestTurn.result?.plant_id}}/>}</div></article>)}
+            {chatMessages.map((message,index)=><article className={"chat-turn "+message.role} key={message.created_at||index}>{message.role==="assistant"&&<span className="assistant-mark">✳</span>}<div className="chat-bubble">{message.role==="user"?<p>{typeof message.content==="string"?message.content:displayValue(message.content)}</p>:typeof message.content==="string"?<div className="chat-answer-text">{renderSafeMarkdown(message.content)}</div>:<AnalysisResponse result={{analysis:message.content as Analysis,plant_id:latestTurn.result?.plant_id,model:message.model}}/>}</div></article>)}
             {chatBusy&&<article className="chat-turn assistant"><span className="assistant-mark">✳</span><div className="typing-bubble"><i/><i/><i/><span>Reviewing plant evidence</span></div></article>}
           </div>
           <form className="chat-composer" onSubmit={sendFollowUp}><textarea aria-label="Ask a question about this plant" rows={1} maxLength={2000} value={chatInput} onChange={e=>setChatInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();void sendFollowUp(e as any)}}} placeholder="Ask anything about this plant's analysis…" disabled={chatBusy}/><button type="submit" aria-label="Send message" disabled={chatBusy||!chatInput.trim()}>↑</button><small>Enter to send · Shift + Enter for a new line</small></form>
