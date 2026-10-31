@@ -1,0 +1,127 @@
+<title>SolarSleuth Tech Stack</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+/* Layout: request path drawn top to bottom — browser, edge, backend, then the two analysis services side by side. */
+:root {
+  --bg: #f4f6f2; --panel: #ffffff; --ink: #14181a; --muted: #56605a; --line: #d9dfd6;
+  --forest: #112116; --lime: #8fb316; --lime-soft: #eef6d2; --royal: #312b8d; --royal-soft: #ecebfa;
+  --amber: #a86b00; --amber-soft: #fbf0d9; --teal: #0f766e; --teal-soft: #dff3f0;
+  --display: "Manrope", "Inter", system-ui, sans-serif; --body: "Inter", system-ui, sans-serif; --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0b130e; --panel: #121d16; --ink: #e8efe9; --muted: #a2b0a6; --line: #26362b;
+  --forest: #c4f03c; --lime: #c4f03c; --lime-soft: #1f2e14; --royal: #b9b5ff; --royal-soft: #1d1d44;
+  --amber: #f2c16d; --amber-soft: #3a2c17; --teal: #6fd6c9; --teal-soft: #12302c; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #0b130e; --panel: #121d16; --ink: #e8efe9; --muted: #a2b0a6; --line: #26362b;
+  --forest: #c4f03c; --lime: #c4f03c; --lime-soft: #1f2e14; --royal: #b9b5ff; --royal-soft: #1d1d44;
+  --amber: #f2c16d; --amber-soft: #3a2c17; --teal: #6fd6c9; --teal-soft: #12302c; color-scheme: dark; }
+body { background: var(--bg); color: var(--ink); font: 15px/1.55 var(--body); }
+.wrap { max-width: 1080px; margin: 0 auto; padding-block: 40px 56px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+header h1 { font: 800 clamp(26px, 4vw, 38px)/1.1 var(--display); letter-spacing: -0.02em; margin: 6px 0 8px; text-wrap: balance; }
+header p { color: var(--muted); max-width: 64ch; margin: 0; }
+.kicker { font: 600 11.5px/1 var(--body); letter-spacing: .14em; text-transform: uppercase; color: var(--lime); }
+.diagram { margin-top: 32px; display: grid; gap: 0; }
+.tier { display: grid; gap: 16px; }
+.tier.two { grid-template-columns: 1fr 1fr; }
+.tier.backend { grid-template-columns: 1.6fr 1fr; align-items: stretch; }
+.box { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; min-width: 0; display: grid; gap: 10px; align-content: start; }
+.box header { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.box h2 { font: 700 17px/1.2 var(--display); margin: 0; }
+.port { font: 500 12px/1 var(--mono); color: var(--muted); border: 1px solid var(--line); border-radius: 6px; padding: 4px 7px; white-space: nowrap; }
+.role { color: var(--muted); font-size: 13.5px; margin: 0; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { font: 500 12.5px/1 var(--body); padding: 6px 9px; border-radius: 7px; background: var(--c-soft); color: var(--c); }
+.client { --c: var(--royal); --c-soft: var(--royal-soft); border-top: 3px solid var(--royal); }
+.edge { --c: var(--muted); --c-soft: transparent; border-style: dashed; }
+.edge .chip { border: 1px solid var(--line); }
+.api { --c: var(--forest); --c-soft: var(--lime-soft); border-top: 3px solid var(--lime); }
+.db { --c: var(--teal); --c-soft: var(--teal-soft); border-top: 3px solid var(--teal); }
+.ml { --c: var(--forest); --c-soft: var(--lime-soft); border-top: 3px solid var(--lime); }
+.llm { --c: var(--amber); --c-soft: var(--amber-soft); border-top: 3px solid var(--amber); }
+.stages { margin: 0; padding-left: 18px; font-size: 13px; color: var(--muted); display: grid; gap: 2px; }
+.rule { font-size: 12.5px; padding: 8px 10px; border-radius: 8px; background: var(--c-soft); color: var(--ink); }
+.link { display: grid; justify-items: center; padding: 6px 0; color: var(--muted); }
+.link .stem { width: 2px; height: 18px; background: var(--line); }
+.link .label { font: 500 12px/1.4 var(--mono); text-align: center; padding: 4px 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); max-width: 100%; }
+.link .head { width: 0; height: 0; border-left: 6px solid transparent; border-right: 6px solid transparent; border-top: 7px solid var(--line); }
+.split { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.legend { margin-top: 28px; display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; }
+.legend div { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; font-size: 13.5px; color: var(--muted); }
+.legend b { display: block; color: var(--ink); font: 700 14px/1.3 var(--display); margin-bottom: 4px; }
+@media (max-width: 720px) { .tier.two, .tier.backend, .split { grid-template-columns: 1fr; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <span class="kicker">Architecture</span>
+    <h1>SolarSleuth tech stack</h1>
+    <p>Four local services. The browser talks only to the backend; the deterministic ML service produces every number and the local language model only explains them.</p>
+  </header>
+
+  <div class="diagram" role="img" aria-label="Request flow: browser to backend, backend to MongoDB, ML service and local LLM service">
+    <div class="tier">
+      <section class="box client">
+        <header><h2>Frontend · web app</h2><span class="port">:5173</span></header>
+        <p class="role">Marketing site, sign-in, workspace: upload, reports, waterfall, validation lab, streamed AI chat. Synthetic preview workspace.</p>
+        <div class="chips"><span class="chip">React 19</span><span class="chip">TypeScript 5.8</span><span class="chip">Vite 6</span><span class="chip">React Router 7</span><span class="chip">CSS design tokens · light/dark</span><span class="chip">Fontsource Manrope + Inter</span><span class="chip">Vitest</span><span class="chip">three.js (asset renders)</span></div>
+      </section>
+    </div>
+
+    <div class="link"><span class="stem"></span><span class="label">HTTPS · JSON · multipart upload (XHR progress) · SSE chat stream</span><span class="head"></span></div>
+
+    <div class="tier">
+      <section class="box edge">
+        <header><h2>Public access (optional)</h2><span class="port">tunnel → :5173</span></header>
+        <p class="role">One ngrok URL serves the site; the Vite server proxies <code>/api</code>, <code>/ready</code> and <code>/health</code> to the backend.</p>
+        <div class="chips"><span class="chip">ngrok</span><span class="chip">Vite dev proxy</span></div>
+      </section>
+    </div>
+
+    <div class="link"><span class="stem"></span><span class="label">REST /api/v1 · Bearer JWT</span><span class="head"></span></div>
+
+    <div class="tier backend">
+      <section class="box api">
+        <header><h2>Backend API</h2><span class="port">:8001</span></header>
+        <p class="role">Auth, plants, upload validation (CSV/XLSX, 25 MiB), orchestration of ML then LLM, saved reports, report-grounded chat, evidence-only fallback when the AI is down.</p>
+        <div class="chips"><span class="chip">Python</span><span class="chip">FastAPI</span><span class="chip">Uvicorn</span><span class="chip">Pydantic v2</span><span class="chip">PyJWT</span><span class="chip">Argon2 (pwdlib)</span><span class="chip">httpx</span><span class="chip">python-multipart</span></div>
+      </section>
+      <section class="box db">
+        <header><h2>Database</h2><span class="port">:27017</span></header>
+        <p class="role">Users, businesses, plants, analysis results and chat history. Raw uploads are not stored.</p>
+        <div class="chips"><span class="chip">MongoDB</span><span class="chip">PyMongo</span></div>
+      </section>
+    </div>
+
+    <div class="link"><span class="stem"></span><span class="label">internal HTTP · X-Service-Token</span><span class="head"></span></div>
+
+    <div class="split">
+      <section class="box ml">
+        <header><h2>Deterministic ML service</h2><span class="port">:8002</span></header>
+        <ol class="stages">
+          <li>Ingestion and column mapping, unit normalisation</li>
+          <li>Data-quality validation</li>
+          <li>Physics expected-energy baseline</li>
+          <li>Anomaly detection (shortfall, peer, CUSUM)</li>
+          <li>Rule-based attribution → hypotheses</li>
+          <li>Energy waterfall: weather vs plant effect</li>
+        </ol>
+        <div class="chips"><span class="chip">FastAPI</span><span class="chip">pandas</span><span class="chip">NumPy</span><span class="chip">pvlib</span><span class="chip">scikit-learn</span><span class="chip">LightGBM</span><span class="chip">openpyxl</span><span class="chip">PyYAML</span><span class="chip">jsonschema</span></div>
+        <p class="rule">Single numerical authority · output contract v2.1.0</p>
+      </section>
+      <section class="box llm">
+        <header><h2>Local LLM service</h2><span class="port">:8000</span></header>
+        <p class="role">Turns the saved ML result into a structured explanation and answers follow-up questions. Loads in the background at startup.</p>
+        <div class="chips"><span class="chip">FastAPI</span><span class="chip">PyTorch</span><span class="chip">Transformers</span><span class="chip">PEFT · LoRA adapter</span><span class="chip">Accelerate</span><span class="chip">Qwen base model</span></div>
+        <p class="rule">Explains only: never calculates or changes a number</p>
+      </section>
+    </div>
+  </div>
+
+  <div class="legend">
+    <div><b>Upload flow</b>Browser → backend → ML service → LLM service → saved to MongoDB → report shown.</div>
+    <div><b>Chat flow</b>Question → backend loads the saved ML result → LLM answers → streamed back over SSE.</div>
+    <div><b>Failure handling</b>If the LLM is unavailable, the report is still saved with an evidence-only summary.</div>
+  </div>
+</div>
