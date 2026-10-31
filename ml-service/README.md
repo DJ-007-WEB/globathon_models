@@ -29,6 +29,28 @@ The API delegates to the existing deterministic pipeline: ingestion, schema mapp
 
 The HTTP adapter accepts one operating-data file. Additional context-file support in the Python pipeline is not exposed through this endpoint.
 
+## Enriched inverter telemetry schema
+
+The mapper explicitly recognizes the enriched long-format export used for
+integration checks. Its columns include `scenario_id`, `synthetic`,
+`timestamp_utc`, `inverter_id`, AC/DC power, interval energy, module and
+ambient temperature, POA/GHI/DNI/DHI irradiance, rated AC/DC power,
+inverter efficiency, DC/AC ratio, temperature coefficient, system losses,
+site coordinates, solar elevation and cloud-cover fraction.
+
+A long-format file may contain one row per inverter per timestamp. The
+inverter identifier is retained as the device key; timestamp cadence is
+derived independently for each inverter. DNI/DHI and cloud-cover values are
+mapped as auxiliary telemetry and do not silently replace POA irradiance in
+the physics baseline. Scenario identifiers and the synthetic-data marker
+are metadata, not plant measurements.
+
+The supplied example contains 768 rows, four inverters, 192 UTC timestamps
+at 15-minute intervals over two days, and no missing or duplicate
+inverter/timestamp records. Its `synthetic=True` marker means it is suitable
+for schema, integration and arithmetic regression checks, not for claims
+about real-world forecast or fault-detection accuracy.
+
 ## Tests
 
 ```powershell
