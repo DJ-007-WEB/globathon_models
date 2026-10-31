@@ -233,3 +233,6 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
 .chat-answer-text h4{font:750 13px var(--display);margin:15px 0 7px;color:var(--ink)}
 .chat-answer-text .chat-markdown-list-item{padding-left:8px;margin:4px 0 4px 5px;color:var(--ink-2);line-height:1.7}
 .chat-answer-text .chat-markdown-spacer{height:7px}
+
+.analysis-state-row{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin:0 0 14px}
+.ai-unavailable-note{font-size:11px;line-height:1.5;color:var(--amber);background:var(--amber-soft);border:1px solid var(--line);border-radius:9px;padding:7px 10px}
