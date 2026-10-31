@@ -70,6 +70,8 @@ class LLMService:
         self.model = None
         self.last_load_error: str | None = None
         self.last_inference_error: str | None = None
+        self.max_input_tokens = 8192
+        self.last_prompt_tokens: int | None = None
         self._load_lock = threading.Lock()
         self._generation_lock = threading.Lock()
 
@@ -139,15 +141,93 @@ class LLMService:
 
     @staticmethod
     def _build_user_payload(request: AnalysisRequest) -> str:
+        # Put the authoritative ML contract first. This matters for causal LM
+        # tokenizers, which otherwise may truncate the tail of long prompts.
         payload: dict[str, Any] = {
             "plant_id": request.plant_id,
             "timestamp": request.timestamp,
             "plant_context": request.plant_context,
-            "observations": request.observations,
             "ml_results": request.ml_results,
+            "observations": request.observations,
             "retrieved_context": request.retrieved_context,
         }
         return json.dumps(payload, ensure_ascii=False, separators=(",", ":"), allow_nan=False, default=str)
+
+    def _prepare_prompt(self, request: AnalysisRequest) -> tuple[str, int]:
+        """Build a token-bounded prompt without ever silently truncating ML evidence."""
+        payload = json.loads(self._build_user_payload(request))
+        max_prompt_tokens = int(getattr(self, "max_input_tokens", 8192))
+
+        def render() -> tuple[str, int]:
+            user_payload = json.dumps(
+                payload, ensure_ascii=False, separators=(",", ":"), allow_nan=False, default=str
+            )
+            messages = [
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": user_payload},
+            ]
+            if getattr(self.tokenizer, "chat_template", None):
+                prompt_text = self.tokenizer.apply_chat_template(
+                    messages, tokenize=False, add_generation_prompt=True
+                )
+            else:
+                prompt_text = f"System:\n{SYSTEM_PROMPT}\n\nUser:\n{user_payload}\n\nAssistant JSON:\n"
+            token_ids = self.tokenizer.encode(prompt_text, add_special_tokens=False)
+            return prompt_text, len(token_ids)
+
+        prompt_text, token_count = render()
+        if token_count <= max_prompt_tokens:
+            return prompt_text, token_count
+
+        # Remove conversational context and verbose diagnostics before touching
+        # core metrics, energy components, waterfall or device-level findings.
+        payload["retrieved_context"] = []
+        observations = payload.get("observations")
+        if isinstance(observations, dict):
+            payload["observations"] = {
+                key: observations[key]
+                for key in ("analysis_status", "summary", "interval", "data_quality",
+                            "limitations", "unresolved_fields", "prior_explanation")
+                if key in observations
+            }
+        ml = payload.get("ml_results")
+        if isinstance(ml, dict):
+            for key, keep in (
+                ("device_performance", 12), ("anomalies", 8), ("hypotheses", 8),
+                ("evidence", 12), ("limitations", 12), ("unresolved_fields", 12),
+                ("missing_required_fields", 12), ("errors", 4),
+            ):
+                if isinstance(ml.get(key), list):
+                    ml[key] = ml[key][:keep]
+            quality = ml.get("data_quality")
+            if isinstance(quality, dict) and isinstance(quality.get("checks"), list):
+                quality["checks"] = quality["checks"][:12]
+            if isinstance(ml.get("summary"), str):
+                ml["summary"] = ml["summary"][:1800]
+
+        prompt_text, token_count = render()
+        if token_count <= max_prompt_tokens:
+            return prompt_text, token_count
+
+        # A second bounded pass keeps only the strongest device/anomaly evidence.
+        if isinstance(ml, dict):
+            for key, keep in (
+                ("device_performance", 5), ("anomalies", 4), ("hypotheses", 4),
+                ("evidence", 6), ("limitations", 8), ("unresolved_fields", 8),
+                ("missing_required_fields", 8), ("errors", 2),
+            ):
+                if isinstance(ml.get(key), list):
+                    ml[key] = ml[key][:keep]
+            quality = ml.get("data_quality")
+            if isinstance(quality, dict):
+                quality["checks"] = quality.get("checks", [])[:6]
+        prompt_text, token_count = render()
+        if token_count > max_prompt_tokens:
+            raise ValueError(
+                f"Authoritative ML evidence prompt is too large ({token_count} tokens; "
+                f"limit {max_prompt_tokens}). Refusing to silently truncate the ML result."
+            )
+        return prompt_text, token_count
 
     @staticmethod
     def _extract_json(text: str) -> dict[str, Any]:
@@ -266,22 +346,15 @@ class LLMService:
 
     def analyze(self, request: AnalysisRequest) -> AnalysisResponse:
         self._load()
-        user_payload = self._build_user_payload(request)
-        messages = [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": user_payload},
-        ]
-        if getattr(self.tokenizer, "chat_template", None):
-            prompt = self.tokenizer.apply_chat_template(
-                messages, tokenize=False, add_generation_prompt=True
-            )
-        else:
-            prompt = f"System:\n{SYSTEM_PROMPT}\n\nUser:\n{user_payload}\n\nAssistant JSON:\n"
+        prompt, prompt_tokens = self._prepare_prompt(request)
+        self.last_prompt_tokens = prompt_tokens
 
         import torch
 
         def generate(text: str) -> str:
-            inputs = self.tokenizer(text, return_tensors="pt", truncation=True, max_length=8192)
+            inputs = self.tokenizer(text, return_tensors="pt", truncation=False)
+            if inputs["input_ids"].shape[1] > int(getattr(self, "max_input_tokens", 8192)):
+                raise ValueError("Prompt exceeded the ML evidence token budget; refusing truncation.")
             device = self.model.get_input_embeddings().weight.device
             inputs = {key: value.to(device) for key, value in inputs.items()}
             generated = self.model.generate(
