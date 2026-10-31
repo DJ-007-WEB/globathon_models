@@ -156,7 +156,8 @@ class LLMService:
     def _prepare_prompt(self, request: AnalysisRequest) -> tuple[str, int]:
         """Build a token-bounded prompt without ever silently truncating ML evidence."""
         payload = json.loads(self._build_user_payload(request))
-        max_prompt_tokens = int(getattr(self, "max_input_tokens", 8192))
+        # Keep room for the corrective retry instruction and generated answer.
+        max_prompt_tokens = max(512, int(getattr(self, "max_input_tokens", 7600)) - 256)
 
         def render() -> tuple[str, int]:
             user_payload = json.dumps(
@@ -373,27 +374,13 @@ class LLMService:
                 try:
                     attempt_prompt = prompt
                     if attempt:
-                        retry_messages = messages + [{
-                            "role": "user",
-                            "content": (
-                                "Your previous response did not satisfy the required JSON contract. "
-                                "Return one corrected JSON object only, with exactly these keys: "
-                                "summary, observations, possible_causes, supporting_evidence, "
-                                "recommended_checks, limitations, confidence. All five list fields "
-                                "must be arrays of strings. confidence must be low, moderate, high, "
-                                "or insufficient_evidence. Use only the evidence in the preceding payload."
-                            ),
-                        }]
-                        if getattr(self.tokenizer, "chat_template", None):
-                            attempt_prompt = self.tokenizer.apply_chat_template(
-                                retry_messages, tokenize=False, add_generation_prompt=True
-                            )
-                        else:
-                            attempt_prompt = prompt + (
-                                "\n\nCorrection required: output one JSON object only with exactly "
-                                "summary, observations, possible_causes, supporting_evidence, "
-                                "recommended_checks, limitations, confidence. Lists must contain strings."
-                            )
+                        attempt_prompt = prompt + (
+                            "\n\nCorrection required: the previous output did not satisfy the JSON contract. "
+                            "Return exactly one JSON object with summary, observations, possible_causes, "
+                            "supporting_evidence, recommended_checks, limitations and confidence. "
+                            "All list fields must be arrays of strings. Use only the ML evidence already "
+                            "provided above; do not invent or recalculate measurements."
+                        )
                     raw = generate(attempt_prompt)
                     parsed = self._extract_json(raw)
                     normalized = self._normalize_response(parsed)
