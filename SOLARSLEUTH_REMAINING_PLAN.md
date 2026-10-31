@@ -293,3 +293,38 @@ Execute one task at a time. Do not run the full test suite until the final valid
 - [ ] Complete remaining frontend polish, performance checks and deployment validation.
 
 Live browser/runtime validation cannot be claimed from repository CI alone; it must be completed against the running local services.
+
+---
+
+## Execution log — 2026-10-31
+
+Implementation is being applied incrementally on `product-transformation`. Do not treat local runtime acceptance as complete until the Windows verification script and browser flow have been run against the developer's actual services.
+
+### Completed in this pass
+
+- **LLM inference contract:** Added a genuine schema-correction retry, normalization of common small-model output shapes, safe missing-field defaults, and regression tests. The retry preserves the original evidence payload and never creates missing measurements.
+- **LLM diagnostics:** Readiness now exposes the last inference/load error through the backend dependency status. LLM readiness is degraded after an inference failure rather than reporting a false healthy state.
+- **ML output contract:** Added the missing `expected_deviation` and `expected_deviation_kwh` definitions to the strict v2.1.0 JSON Schema. This fixed the contract/schema mismatch that had caused 19 deterministic-ML tests to fail.
+- **Follow-up chat:** Streaming transport, browser fallback to the non-streaming route, saved-report grounding, and deterministic fallback answers are implemented. The chat route decorator was corrected so it is attached to the saved-analysis handler, not the fallback helper.
+- **Malformed LLM responses:** Uploads now retain and persist valid deterministic ML results when the LLM returns a malformed/schema-invalid response. The fallback explanation is explicitly marked unavailable and does not invent causes or metrics.
+- **Frontend fallback visibility:** Assistant chat now retains the response model metadata and labels deterministic fallback answers when local LLM inference is unavailable.
+- **LLM startup warmup:** Added opt-in local startup warmup via `LLM_WARMUP_ON_STARTUP=true`; production mode warms the model before serving. Warmup failure is recorded without preventing the API from starting.
+- **ML context files:** Optional weather, forecast, device and event-log file uploads are wired through frontend, backend and ML API. The enriched stress-dataset regression test confirms actual and expected energy can be calculated without a forecast file; the waterfall correctly remains unavailable and states that no forecast file was supplied. Upload a separate forecast file to enable forecast-relative reconciliation.
+- **Runtime verification:** Added `scripts/verify-local-runtime.ps1` and documented it in the root README. It checks the four standard ports, expected virtual-environment interpreter paths, matching internal tokens, 300-second LLM timeout, CORS, LLM warmup and backend readiness.
+- **Configuration/security review:** The example environment files contain the expected service URLs, 300-second backend LLM timeout and localhost CORS origins. Root and LLM ignore rules exclude environment secrets, virtual environments and local model weights.
+
+### Validation evidence
+
+- GitHub Actions completed successfully for all four jobs (backend, deterministic ML, LLM API and frontend) at commit `a5ce1ee2`.
+- Earlier full green run at `3ffa4e21` also passed all four jobs.
+- Subsequent commits add malformed-output fallback tests, startup warmup tests, frontend fallback-status rendering and runtime verification documentation. Their latest CI run must be checked before merge.
+- The enriched stress-dataset test explicitly asserts non-null actual and expected energy and a clear unavailable-waterfall reason when no forecast file is supplied.
+
+### Still requires local/deployment validation
+
+- Run `scripts/verify-local-runtime.ps1` on the Windows machine with all four services started; this environment cannot inspect the developer's local processes, .env values, MongoDB instance or browser session.
+- Run a real authenticated upload, persistence, history and multi-turn chat against the local ports and configured MongoDB.
+- Test the actual 30-day stress CSV and any separate forecast/weather/device/event files. The raw stress CSV is not committed in this branch, so its exact headers and data cannot be independently inspected here.
+- Confirm the deployment target. Current repository branches do not include a branch named `production`; do not deploy or merge based on an assumed production branch.
+- Run final CI for the latest commit, review deployment environment variables and perform a clean-checkout demo rehearsal.
+
