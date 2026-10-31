@@ -407,3 +407,70 @@ def test_deterministic_chat_fallback_uses_only_saved_ml_values():
     assert answer["possible_causes"] == []
     assert answer["confidence"] == "insufficient_evidence"
     assert any("No forecast file was supplied." in item for item in answer["limitations"])
+
+def test_follow_up_chat_returns_grounded_fallback_when_llm_is_unavailable(monkeypatch):
+    from fastapi import HTTPException
+
+    class Cursor:
+        def sort(self, *args): return self
+        def limit(self, *args): return self
+        def __iter__(self): return iter([])
+
+    class Analyses:
+        def find_one(self, query, projection):
+            return {
+                "request_id": "analysis-fallback",
+                "business_id": "business-a",
+                "plant_id": "plant-1",
+                "analysis_mode": "full",
+                "result": {
+                    "ml_analysis": {
+                        "analysis_status": "partial",
+                        "summary": "Measured energy is available; forecast is missing.",
+                        "energy": {
+                            "forecast": {"value_kwh": None, "reason": "No forecast file was supplied."},
+                            "expected": {"value_kwh": 100.0, "reason": None},
+                            "actual": {"value_kwh": 92.5, "reason": None},
+                            "deviation": {"value_kwh": None, "reason": "Forecast energy is unavailable."},
+                        },
+                        "anomalies": [],
+                        "hypotheses": [],
+                        "evidence": [],
+                        "limitations": ["Forecast data is missing."],
+                    },
+                    "analysis": {"recommended_checks": ["Upload the design forecast file."]},
+                },
+            }
+
+    class Messages:
+        inserted = None
+        def find(self, *args): return Cursor()
+        def insert_many(self, records): self.inserted = records
+
+    class Database:
+        analyses = Analyses()
+        analysis_messages = Messages()
+
+    db = Database()
+    monkeypatch.setattr(main, "database", db)
+    monkeypatch.setattr(main, "_authorize_browser", lambda authorization: {
+        "user_id": "user-a", "business_id": "business-a"
+    })
+
+    async def unavailable_llm(payload):
+        raise HTTPException(status_code=503, detail="Local LLM unavailable.")
+
+    monkeypatch.setattr(main, "_post_llm", unavailable_llm)
+    with TestClient(main.app) as client:
+        response = client.post(
+            "/api/v1/analyses/analysis-fallback/chat",
+            json={"question": "What is driving the energy deviation?"},
+        )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["model"] == "deterministic-fallback"
+    assert "100.0 kWh" in body["answer"]["summary"]
+    assert "92.5 kWh" in body["answer"]["summary"]
+    assert body["answer"]["possible_causes"] == []
+    assert len(db.analysis_messages.inserted) == 2
