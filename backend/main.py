@@ -188,21 +188,25 @@ def _safe_filename(filename: str | None) -> str:
     return cleaned
 
 
+ZIP_SIGNATURE = bytes((0x50, 0x4B, 0x03, 0x04))
+OLE2_SIGNATURE = bytes((0xD0, 0xCF, 0x11, 0xE0))
+
+
 def _validate_file_signature(filename: str, content: bytes) -> None:
     suffix = Path(filename).suffix.lower()
     if suffix == ".xlsx":
-        if not content.startswith(b"PK\\x03\\x04"):
+        if not content.startswith(ZIP_SIGNATURE):
             raise HTTPException(status_code=415, detail="The file extension is XLSX but its content is not a valid XLSX/ZIP signature.")
         return
     if suffix == ".csv":
-        if content.startswith((b"PK\\x03\\x04", b"\\xd0\\xcf\\x11\\xe0")):
+        if content.startswith((ZIP_SIGNATURE, OLE2_SIGNATURE)):
             raise HTTPException(status_code=415, detail="The CSV extension does not match the uploaded file content.")
         try:
             decoded = content.decode("utf-8-sig")
         except UnicodeDecodeError as exc:
             raise HTTPException(status_code=415, detail="CSV files must use UTF-8 encoding.") from exc
         first_line = next((line for line in decoded.splitlines() if line.strip()), "")
-        if not first_line or not any(delimiter in first_line for delimiter in (",", ";", "\\t")):
+        if not first_line or not any(delimiter in first_line for delimiter in (",", ";", "\t")):
             raise HTTPException(status_code=422, detail="The CSV must contain a delimited header row.")
         return
     raise HTTPException(status_code=415, detail="Only CSV and XLSX files are supported.")
@@ -597,6 +601,24 @@ def _fallback_chat_answer(question: str, ml_result: dict, prior_explanation: dic
             observations.append(f"{label} is unavailable: {reason}")
             limitations.append(f"{label}: {reason}")
 
+    expected_deviation = ml_result.get("expected_deviation")
+    if isinstance(expected_deviation, dict) and expected_deviation.get("value_kwh") is not None:
+        value = expected_deviation["value_kwh"]
+        observations.append(f"Measured minus expected energy: {value} kWh.")
+        energy_values.append(f"measured minus expected energy is {value} kWh")
+
+    devices = ml_result.get("device_performance") if isinstance(ml_result.get("device_performance"), list) else []
+    if any(term in question_text for term in ("inverter", "device", "underperform", "which")):
+        for item in devices[:12]:
+            if not isinstance(item, dict) or not item.get("device_id"):
+                continue
+            parts = [f"{label} {item[key]} kWh" for key, label in (
+                ("actual_energy_kwh", "measured"), ("expected_energy_kwh", "expected"),
+                ("deviation_kwh", "measured minus expected"),
+            ) if item.get(key) is not None]
+            if parts:
+                observations.append(f"Device {item['device_id']}: " + ", ".join(parts) + ".")
+
     anomalies = ml_result.get("anomalies") if isinstance(ml_result.get("anomalies"), list) else []
     hypotheses = ml_result.get("hypotheses") if isinstance(ml_result.get("hypotheses"), list) else []
     supported_causes = [str(item.get("summary") or item.get("hypothesis") or item.get("message"))
@@ -633,7 +655,7 @@ def _fallback_chat_answer(question: str, ml_result: dict, prior_explanation: dic
     checks = [str(item) for item in prior_checks[:6] if item] if isinstance(prior_checks, list) else []
     return {
         "summary": summary,
-        "observations": observations[:10],
+        "observations": observations[:20],
         "possible_causes": supported_causes[:8],
         "supporting_evidence": [str(item) for item in (ml_result.get("evidence") or [])[:8]],
         "recommended_checks": checks,

@@ -272,3 +272,92 @@ def test_prompt_builder_refuses_when_core_ml_payload_alone_exceeds_budget():
         assert "refusing to silently truncate" in str(exc).lower()
     else:
         raise AssertionError("Oversized prompts must fail explicitly, not be truncated.")
+
+
+def _grounding_request(**ml_overrides):
+    from schemas import AnalysisRequest
+
+    ml = {"analysis_status": "success", "actual_energy": 5374.120967,
+          "expected_energy": 5379.164165, "data_quality": {"status": "pass"},
+          "anomalies": [], "hypotheses": []}
+    ml.update(ml_overrides)
+    return AnalysisRequest(plant_id="plant-1", observations={"analysis_status": ml["analysis_status"]},
+                           ml_results=ml)
+
+
+def test_grounding_removes_invented_measurements_and_keeps_rounded_supplied_values():
+    import json
+    from llm_service import LLMService
+
+    raw = json.dumps({
+        "summary": "Measured energy was 5,374.12 kWh. Peak output reached 812.5 kW.",
+        "observations": ["Measured energy was 5374.12 kWh.", "Irradiance peaked at 1043 W/m2."],
+        "possible_causes": [], "supporting_evidence": [], "recommended_checks": [],
+        "limitations": [], "confidence": "high",
+    })
+    result = LLMService._finalize(LLMService.__new__(LLMService), raw, _grounding_request())
+    assert result.summary == "Measured energy was 5,374.12 kWh."
+    assert result.observations == ["Measured energy was 5374.12 kWh."]
+    assert any("2 generated statement(s)" in item for item in result.limitations)
+    assert result.confidence == "high"
+
+
+def test_grounding_clears_causes_without_ml_findings_and_caps_partial_confidence():
+    import json
+    from llm_service import LLMService
+
+    raw = json.dumps({"summary": "Output looks low.", "possible_causes": ["Soiling is the confirmed cause."],
+                      "confidence": "high"})
+    result = LLMService._finalize(LLMService.__new__(LLMService), raw,
+                                  _grounding_request(analysis_status="partial"))
+    assert result.possible_causes == []
+    assert result.confidence == "moderate"
+    assert any("no anomaly or cause hypothesis" in item for item in result.limitations)
+
+
+def test_grounding_keeps_causes_backed_by_ml_hypotheses_and_lowers_failed_quality():
+    import json
+    from llm_service import LLMService
+
+    raw = json.dumps({"summary": "A shortfall was flagged.", "possible_causes": ["Possible soiling on INV-02."],
+                      "confidence": "high"})
+    request = _grounding_request(hypotheses=[{"summary": "soiling"}], data_quality={"status": "fail"})
+    result = LLMService._finalize(LLMService.__new__(LLMService), raw, request)
+    assert result.possible_causes == ["Possible soiling on INV-02."]
+
+    raw = json.dumps({"summary": "A shortfall was flagged.", "possible_causes": ["Soiling is the confirmed cause."]})
+    hedged = LLMService._finalize(LLMService.__new__(LLMService), raw, request)
+    assert hedged.possible_causes == ["Unconfirmed hypothesis: Soiling is the confirmed cause."]
+    assert result.confidence == "low"
+
+
+def test_identical_prompt_reuses_validated_explanation(monkeypatch):
+    import sys
+    import types
+    from llm_service import LLMService
+
+    service = LLMService(model_name=None, adapter_path="missing")
+    calls = []
+
+    class FakeTokenizer:
+        chat_template = None
+        pad_token_id = eos_token_id = 0
+
+        def encode(self, text, add_special_tokens=False):
+            return [0] * 10
+
+    service.tokenizer, service.model = FakeTokenizer(), object()
+    monkeypatch.setitem(sys.modules, "torch", types.SimpleNamespace(inference_mode=lambda: __import__("contextlib").nullcontext()))
+
+    def fake_finalize(raw, request):
+        calls.append(raw)
+        return AnalysisResponse(summary="Measured energy was 5374.12 kWh.")
+
+    service._finalize = fake_finalize
+    import hashlib
+    prompt, _ = service._prepare_prompt(_grounding_request())
+    key = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
+    service._response_cache[key] = AnalysisResponse(summary="cached answer")
+    result = service.analyze(_grounding_request())
+    assert result.summary == "cached answer"
+    assert calls == []

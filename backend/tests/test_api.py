@@ -501,3 +501,22 @@ def test_invalid_llm_output_fallback_does_not_invent_metrics():
     assert result["observations"] == []
     assert result["possible_causes"] == []
     assert result["supporting_evidence"] == []
+
+
+def test_deterministic_fallback_answers_device_questions_from_saved_device_totals():
+    answer = main._fallback_chat_answer(
+        "Which inverter underperformed?",
+        {
+            "analysis_status": "partial",
+            "energy": {"actual": {"value_kwh": 30.0}, "expected": {"value_kwh": 40.0}},
+            "expected_deviation": {"value_kwh": -10.0, "status": "available"},
+            "device_performance": [
+                {"device_id": "INV-01", "actual_energy_kwh": 20.0, "expected_energy_kwh": 21.0, "deviation_kwh": -1.0},
+                {"device_id": "INV-02", "actual_energy_kwh": 10.0, "expected_energy_kwh": 19.0, "deviation_kwh": -9.0},
+            ],
+            "anomalies": [], "hypotheses": [],
+        },
+    )
+    assert "Device INV-02: measured 10.0 kWh, expected 19.0 kWh, measured minus expected -9.0 kWh." in answer["observations"]
+    assert "Measured minus expected energy: -10.0 kWh." in answer["observations"]
+    assert answer["possible_causes"] == []

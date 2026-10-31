@@ -202,3 +202,31 @@ def test_upload_forwards_optional_context_datasets_to_ml(monkeypatch):
     assert captured["operating"] == "operating.csv"
     assert set(captured["context_files"]) == {"forecast_file", "weather_file"}
     assert captured["context_files"]["forecast_file"][0] == "forecast.csv"
+
+
+def test_upload_accepts_real_xlsx_and_tab_delimited_csv(monkeypatch):
+    import io
+    import openpyxl
+
+    workbook = openpyxl.Workbook()
+    workbook.active.append(["timestamp", "ac_power_kw"])
+    workbook.active.append(["2026-09-01T07:00:00Z", 5.0])
+    buffer = io.BytesIO()
+    workbook.save(buffer)
+    received = []
+
+    async def fake_ml(content, filename, **kwargs):
+        received.append(filename)
+        return VALID_ML
+
+    async def fake_llm(payload):
+        return llm_response(payload)
+
+    monkeypatch.setattr(main, "_run_ml", fake_ml)
+    monkeypatch.setattr(main, "_post_llm", fake_llm)
+    with TestClient(main.app) as client:
+        xlsx = client.post("/api/v1/analyze/upload", files={"file": ("plant.xlsx", buffer.getvalue(), "application/octet-stream")})
+        tsv = client.post("/api/v1/analyze/upload", files={"file": ("plant.csv", b"timestamp\tac_power_kw\n2026-09-01T07:00:00Z\t5\n", "text/csv")})
+    assert xlsx.status_code == 200, xlsx.text
+    assert tsv.status_code == 200, tsv.text
+    assert received == ["plant.xlsx", "plant.csv"]
