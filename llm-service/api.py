@@ -82,6 +82,7 @@ def ready() -> dict:
         "model_name": service.resolved_model_name if service else MODEL_NAME,
         "load_error": service.last_load_error if service else None,
         "last_inference_error": inference_error,
+        "last_prompt_tokens": service.last_prompt_tokens if service else None,
     }
 
 
