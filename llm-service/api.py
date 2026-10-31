@@ -21,6 +21,9 @@ SERVICE_TOKEN = os.getenv("INTERNAL_SERVICE_TOKEN")
 MAX_NEW_TOKENS = max(128, min(int(os.getenv("MAX_NEW_TOKENS", "450")), 1024))
 
 
+WARMUP_ON_STARTUP = os.getenv("LLM_WARMUP_ON_STARTUP", "").strip().lower() in {"1", "true", "yes", "on"}
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     if ENVIRONMENT == "production" and not SERVICE_TOKEN:
@@ -30,6 +33,15 @@ async def lifespan(app: FastAPI):
         adapter_path=ADAPTER_PATH,
         max_new_tokens=MAX_NEW_TOKENS,
     )
+    # Warm the model before serving production traffic. Local demo users can
+    # opt in without making lightweight development/test startup expensive.
+    if ENVIRONMENT == "production" or WARMUP_ON_STARTUP:
+        try:
+            await run_in_threadpool(app.state.llm_service._load)
+        except Exception:
+            app.state.llm_service.last_load_error = (
+                "Startup warmup failed. Check the configured base model and complete PEFT adapter."
+            )
     yield
 
 
