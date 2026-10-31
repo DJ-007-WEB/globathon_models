@@ -26,6 +26,8 @@ import httpx
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, Header, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
+import json
 
 from schemas import AnalyzeResponse
 
@@ -606,6 +608,59 @@ async def ask_about_analysis(request_id: str, payload: AnalysisChatPayload,
         raise HTTPException(status_code=503, detail="The answer was generated but the conversation could not be saved.") from exc
     return {"request_id": request_id, "answer": validated.analysis.model_dump(mode="json"),
             "model": validated.model, "created_at": now.isoformat()}
+
+
+def _chat_answer_as_text(answer: dict) -> str:
+    """Create a readable stream representation; the persisted answer remains structured."""
+    sections = (
+        ("What the readings tell us", "observations"),
+        ("Possible explanations", "possible_causes"),
+        ("Evidence considered", "supporting_evidence"),
+        ("Recommended checks", "recommended_checks"),
+        ("Limitations and uncertainty", "limitations"),
+    )
+    lines = [str(answer.get("summary") or "The model did not return a summary.")]
+    for heading, key in sections:
+        values = answer.get(key) or []
+        if values:
+            lines.extend(["", f"### {heading}"])
+            lines.extend(f"- {str(value)}" for value in values if value)
+    confidence = answer.get("confidence")
+    if confidence:
+        lines.extend(["", f"**Evidence confidence:** {str(confidence).replace('_', ' ')}"])
+    return "\n".join(lines)
+
+
+@app.post("/api/v1/analyses/{request_id}/chat/stream")
+async def stream_analysis_chat(
+    request_id: str,
+    payload: AnalysisChatPayload,
+    authorization: str | None = Header(None, alias="Authorization"),
+):
+    """Stream a grounded follow-up answer over SSE after the local model completes.
+
+    Generation remains owned by the local LLM. The stream transports its completed,
+    validated explanation progressively so the browser can render a live response.
+    """
+    result = await ask_about_analysis(request_id, payload, authorization)
+    answer = result["answer"]
+    rendered = _chat_answer_as_text(answer)
+
+    async def events():
+        yield "event: start\\ndata: {}\\n\\n"
+        for offset in range(0, len(rendered), 48):
+            chunk = rendered[offset:offset + 48]
+            yield "event: delta\\ndata: " + json.dumps({"text": chunk}, ensure_ascii=False) + "\\n\\n"
+            await asyncio.sleep(0.015)
+        yield "event: done\\ndata: " + json.dumps({
+            "answer": answer, "model": result.get("model"),
+            "created_at": result.get("created_at"),
+        }, ensure_ascii=False) + "\\n\\n"
+
+    return StreamingResponse(
+        events(), media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"},
+    )
 
 
 @app.get("/health")
