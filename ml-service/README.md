@@ -27,7 +27,7 @@ The backend sends `X-Service-Token`; configure the same `INTERNAL_SERVICE_TOKEN`
 
 The API delegates to the existing deterministic pipeline: ingestion, schema mapping, unit interpretation, data-quality validation, physics baseline, anomaly detection, evidence-based attribution, reconciled energy waterfall and strict output contract. Do not replace missing metrics with guesses or treat hypotheses as confirmed equipment faults. LLM explanations do not change the ML response.
 
-The HTTP adapter accepts one operating-data file. Additional context-file support in the Python pipeline is not exposed through this endpoint.
+The HTTP adapter accepts one required operating-data file and optional weather, forecast, device and event-log context files. All inputs are CSV/XLSX and share a 25 MiB combined upload limit.
 
 ## Enriched inverter telemetry schema
 
