@@ -75,3 +75,4 @@ def test_enriched_four_inverter_csv_runs_through_full_operating_pipeline(tmp_pat
     )
     assert result["expected_energy"] is not None
     assert result["unresolved_fields"] == []
+    assert any("marked synthetic" in item for item in result["limitations"])
