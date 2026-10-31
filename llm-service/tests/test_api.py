@@ -190,3 +190,21 @@ def test_schema_repair_discards_unknown_model_fields():
     assert "extra_metric" not in repaired
     assert repaired["observations"] == []
     assert repaired["limitations"] == []
+
+def test_opt_in_startup_warmup_loads_model(monkeypatch):
+    import api
+
+    monkeypatch.setattr(api, "ENVIRONMENT", "development")
+    monkeypatch.setattr(api, "WARMUP_ON_STARTUP", True)
+
+    def fake_load(service):
+        service.tokenizer = object()
+        service.model = object()
+        service.resolved_model_name = "startup-test-model"
+        service.last_load_error = None
+
+    monkeypatch.setattr(api.LLMService, "_load", fake_load)
+    with TestClient(api.app) as client:
+        ready = client.get("/ready").json()
+    assert ready["model_loaded"] is True
+    assert ready["model_name"] == "startup-test-model"
