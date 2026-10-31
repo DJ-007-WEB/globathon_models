@@ -21,6 +21,8 @@ VALID_ML = {
     "analysis_mode": "full",
     "summary": "ML calculated actual and expected energy.",
     "energy": {"actual": {"value_kwh": 12.5}},
+    "expected_deviation": {"value_kwh": -1.5, "status": "available"},
+    "expected_deviation_kwh": -1.5,
     "device_performance": [{"device_id": "INV-01", "actual_energy_kwh": 12.5}],
     "limitations": ["Forecast input unavailable."],
 }
