@@ -20,7 +20,7 @@ python -m uvicorn main:app --host 127.0.0.1 --port 8001 --reload
 
 - MongoDB-backed registration/login, Argon2 password hashes and signed expiring JWTs.
 - Business-scoped plant directory and metadata updates.
-- One-file CSV/XLSX upload validation and bounded ML-first orchestration.
+- CSV/XLSX operating-data upload with optional weather, forecast, device and event-log context; bounded ML-first orchestration.
 - Persistent analysis history and report-grounded follow-up chat.
 - The browser never receives the internal service token and never calls ML/LLM directly.
 
