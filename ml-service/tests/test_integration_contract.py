@@ -18,6 +18,7 @@ def _assert_contract(result: dict) -> None:
     assert result["analysis_status"] in {"success", "partial", "invalid_input", "failed"}
     assert result["analysis_mode"] in {"snapshot", "full"}
     assert set(result["energy"]) == {"forecast", "expected", "actual", "deviation"}
+    assert result["expected_deviation"]["sign_convention"] == "actual_minus_expected"
     assert set(result["capabilities"]) >= {
         "basic_validation",
         "baseline",

@@ -47,6 +47,8 @@ class ContractOutput:
     expected_energy: float | None = None
     actual_energy: float | None = None
     deviation: float | None = None
+    expected_deviation: dict[str, Any] = field(default_factory=dict)
+    expected_deviation_kwh: float | None = None
     waterfall: dict[str, Any] = field(default_factory=dict)
     anomalies: list[dict[str, Any]] = field(default_factory=list)
     hypotheses: list[dict[str, Any]] = field(default_factory=list)

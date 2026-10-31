@@ -1303,6 +1303,38 @@ def _deviation_component(
     }
 
 
+def _expected_deviation_component(
+    actual: Mapping[str, Any],
+    expected: Mapping[str, Any],
+) -> dict[str, Any]:
+    actual_value = _as_float(actual.get("value_kwh"))
+    expected_value = _as_float(expected.get("value_kwh"))
+    value = actual_value - expected_value if actual_value is not None and expected_value is not None else None
+    if value is None:
+        status = "unavailable"
+        reason = "Actual or expected energy is unavailable."
+    else:
+        status = "available" if actual.get("status") == "available" and expected.get("status") == "available" else "partial"
+        reason = None if status == "available" else "The performance gap inherits partial actual or expected coverage."
+    actual_completeness = _as_float(actual.get("completeness"))
+    expected_completeness = _as_float(expected.get("completeness"))
+    completeness = (
+        min(actual_completeness, expected_completeness)
+        if actual_completeness is not None and expected_completeness is not None
+        else None
+    )
+    return {
+        "value_kwh": value,
+        "status": status,
+        "source": "actual_energy - expected_energy",
+        "completeness": completeness,
+        "aggregation_period": "analysis_interval",
+        "unit": "kWh",
+        "reason": reason,
+        "sign_convention": "actual_minus_expected",
+    }
+
+
 def _waterfall(
     forecast: Mapping[str, Any],
     expected: Mapping[str, Any],
@@ -1719,6 +1751,8 @@ def _error_payload(
         expected_energy=None,
         actual_energy=None,
         deviation=None,
+        expected_deviation=_expected_deviation_component(actual, expected),
+        expected_deviation_kwh=None,
         waterfall=waterfall,
         anomalies=[],
         hypotheses=[],
@@ -1841,6 +1875,7 @@ def _analyze_bundle(
     )
     warnings.extend(forecast_warnings)
     deviation_component = _deviation_component(actual_component, forecast_component)
+    expected_deviation_component = _expected_deviation_component(actual_component, expected_component)
     waterfall = _waterfall(forecast_component, expected_component, actual_component, config=config)
 
     anomalies: list[dict[str, Any]] = []
@@ -1980,6 +2015,8 @@ def _analyze_bundle(
         expected_energy=_as_float(expected_component.get("value_kwh")),
         actual_energy=_as_float(actual_component.get("value_kwh")),
         deviation=_as_float(deviation_component.get("value_kwh")),
+        expected_deviation=expected_deviation_component,
+        expected_deviation_kwh=_as_float(expected_deviation_component.get("value_kwh")),
         waterfall=waterfall,
         anomalies=anomalies,
         hypotheses=hypotheses,

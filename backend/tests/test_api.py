@@ -77,13 +77,14 @@ def test_production_browser_access_requires_bearer(monkeypatch):
 
     # The legacy deployment gate still passes its request through the normal ML-first flow.
     monkeypatch.setattr(main, "ENVIRONMENT", "development")
+    monkeypatch.setattr(main, "ML_API_URL", "http://127.0.0.1:1")
     with TestClient(main.app) as client:
         allowed = client.post(
             "/api/v1/analyze/upload",
             headers={"Authorization": "Bearer test-access-token"},
             files={"file": ("plant.csv", b"t,p\\n1,2", "text/csv")},
         )
-    assert allowed.status_code == 503
+    assert allowed.status_code == 503, allowed.text
 
 
 def test_auth_endpoints_fail_closed_without_mongodb(monkeypatch):

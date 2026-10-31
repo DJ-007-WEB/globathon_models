@@ -2,6 +2,12 @@ import pandas as pd
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def isolate_service_token(monkeypatch):
+    import api
+    monkeypatch.setattr(api, "SERVICE_TOKEN", None)
+
+
 @pytest.fixture
 def sample_frame():
     return pd.DataFrame(
