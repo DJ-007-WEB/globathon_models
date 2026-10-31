@@ -300,13 +300,27 @@ class LLMService:
                 try:
                     attempt_prompt = prompt
                     if attempt:
-                        attempt_prompt += (
-                            "\n\nYour previous response was invalid. Return ONE complete JSON object only. "
-                            "Use exactly these keys: summary, observations, possible_causes, "
-                            "supporting_evidence, recommended_checks, limitations, confidence. "
-                            "All five list fields must be JSON arrays of strings. confidence must be "
-                            "low, moderate, high, or insufficient_evidence. Do not add commentary."
-                        )
+                        retry_messages = messages + [{
+                            "role": "user",
+                            "content": (
+                                "Your previous response did not satisfy the required JSON contract. "
+                                "Return one corrected JSON object only, with exactly these keys: "
+                                "summary, observations, possible_causes, supporting_evidence, "
+                                "recommended_checks, limitations, confidence. All five list fields "
+                                "must be arrays of strings. confidence must be low, moderate, high, "
+                                "or insufficient_evidence. Use only the evidence in the preceding payload."
+                            ),
+                        }]
+                        if getattr(self.tokenizer, "chat_template", None):
+                            attempt_prompt = self.tokenizer.apply_chat_template(
+                                retry_messages, tokenize=False, add_generation_prompt=True
+                            )
+                        else:
+                            attempt_prompt = prompt + (
+                                "\n\nCorrection required: output one JSON object only with exactly "
+                                "summary, observations, possible_causes, supporting_evidence, "
+                                "recommended_checks, limitations, confidence. Lists must contain strings."
+                            )
                     raw = generate(attempt_prompt)
                     parsed = self._extract_json(raw)
                     normalized = self._normalize_response(parsed)
