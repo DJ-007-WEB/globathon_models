@@ -484,11 +484,11 @@ export default function App() {
           const { value, done } = await reader.read();
           if (done) break;
           buffer += decoder.decode(value, { stream: true });
-          const events = buffer.split(/\\r?\\n\\r?\\n/);
+          const events = buffer.split(/\r?\n\r?\n/);
           buffer = events.pop() || "";
           for (const event of events) {
-            const eventName = event.match(/^event:\\s*(.+)$/m)?.[1]?.trim();
-            const dataLine = event.split(/\\r?\\n/).find(line => line.startsWith("data:"));
+            const eventName = event.match(/^event:\s*(.+)$/m)?.[1]?.trim();
+            const dataLine = event.split(/\r?\n/).find(line => line.startsWith("data:"));
             if (!dataLine) continue;
             const payload = JSON.parse(dataLine.slice(5).trim() || "{}");
             if (eventName === "delta" && typeof payload.text === "string") {
