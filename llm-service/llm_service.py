@@ -72,6 +72,7 @@ class LLMService:
         self.last_inference_error: str | None = None
         self.max_input_tokens = 7600
         self.last_prompt_tokens: int | None = None
+        self.last_raw_output: str | None = None
         self._load_lock = threading.Lock()
         self._generation_lock = threading.Lock()
 
@@ -168,9 +169,15 @@ class LLMService:
                 {"role": "user", "content": user_payload},
             ]
             if getattr(self.tokenizer, "chat_template", None):
-                prompt_text = self.tokenizer.apply_chat_template(
-                    messages, tokenize=False, add_generation_prompt=True
-                )
+                try:
+                    prompt_text = self.tokenizer.apply_chat_template(
+                        messages, tokenize=False, add_generation_prompt=True,
+                        enable_thinking=False,
+                    )
+                except TypeError:
+                    prompt_text = self.tokenizer.apply_chat_template(
+                        messages, tokenize=False, add_generation_prompt=True
+                    )
             else:
                 prompt_text = f"System:\n{SYSTEM_PROMPT}\n\nUser:\n{user_payload}\n\nAssistant JSON:\n"
             token_ids = self.tokenizer.encode(prompt_text, add_special_tokens=False)
@@ -231,17 +238,27 @@ class LLMService:
 
     @staticmethod
     def _extract_json(text: str) -> dict[str, Any]:
-        text = text.strip()
-        start, end = text.find("{"), text.rfind("}")
-        if start < 0 or end <= start:
-            raise ValueError("Model output did not contain a complete JSON object.")
-        try:
-            value = json.loads(text[start:end + 1])
-        except json.JSONDecodeError as exc:
-            raise ValueError("Model output was not valid JSON.") from exc
-        if not isinstance(value, dict):
-            raise ValueError("Model output must be a JSON object.")
-        return value
+        # Drop reasoning blocks (closed, or unclosed when generation was cut off).
+        text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL | re.IGNORECASE)
+        text = re.sub(r"<think>.*\Z", "", text, flags=re.DOTALL | re.IGNORECASE)
+        text = re.sub(r"```(?:json)?", "", text).strip()
+        decoder = json.JSONDecoder()
+        candidates: list[dict[str, Any]] = []
+        pos = text.find("{")
+        while pos >= 0:
+            try:
+                value, end = decoder.raw_decode(text, pos)
+                if isinstance(value, dict):
+                    candidates.append(value)
+                pos = text.find("{", end)
+            except json.JSONDecodeError:
+                pos = text.find("{", pos + 1)
+        for value in reversed(candidates):
+            if "summary" in value:
+                return value
+        if candidates:
+            return candidates[-1]
+        raise ValueError("Model output did not contain a complete JSON object.")
 
     @staticmethod
     def _normalize_response(data: dict[str, Any]) -> dict[str, Any]:
@@ -381,6 +398,7 @@ class LLMService:
                             "provided above; do not invent or recalculate measurements."
                         )
                     raw = generate(attempt_prompt)
+                    self.last_raw_output = raw[:1500]
                     parsed = self._extract_json(raw)
                     normalized = self._normalize_response(parsed)
                     repaired = self._coerce_response(normalized, request)
@@ -391,7 +409,8 @@ class LLMService:
                     last_error = exc
 
         self.last_inference_error = (
-            f"Inference failed after retry: {type(last_error).__name__}: {last_error}"
+            f"Inference failed after retry: {type(last_error).__name__}: {last_error} "
+            f"| raw output start: {(self.last_raw_output or '')[:300]!r}"
             if last_error else "Inference failed."
         )
         raise ValueError("Model output could not be repaired to the required explanation schema.") from last_error

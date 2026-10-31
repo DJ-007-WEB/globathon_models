@@ -34,6 +34,9 @@ from schemas import AnalyzeResponse
 load_dotenv()
 
 ML_API_URL = os.getenv("ML_API_URL", "http://127.0.0.1:8002").rstrip("/")
+import logging
+logger = logging.getLogger("solarsleuth.backend")
+
 LLM_API_URL = os.getenv("LLM_API_URL", "http://127.0.0.1:8000").rstrip("/")
 ML_TIMEOUT_SECONDS = float(os.getenv("ML_TIMEOUT_SECONDS", "300"))
 LLM_TIMEOUT_SECONDS = float(os.getenv("LLM_TIMEOUT_SECONDS", "300"))
@@ -699,9 +702,11 @@ async def ask_about_analysis(request_id: str, payload: AnalysisChatPayload = Bod
     except HTTPException as exc:
         if exc.status_code not in {502, 503, 504}:
             raise
+        logger.warning("LLM chat fallback used: %s (HTTP %s)", exc.detail, exc.status_code)
         answer = _fallback_chat_answer(question, ml_result, saved.get("analysis"))
         model_name = "deterministic-fallback"
     except Exception:
+        logger.exception("LLM chat response invalid; using deterministic fallback")
         answer = _fallback_chat_answer(question, ml_result, saved.get("analysis"))
         model_name = "deterministic-fallback"
 
@@ -949,6 +954,7 @@ async def analyze_upload(
         except HTTPException as exc:
             if exc.status_code not in {502, 503, 504}:
                 raise
+            logger.warning("LLM upload fallback used: %s (HTTP %s)", exc.detail, exc.status_code)
             validated = AnalyzeResponse(
                 request_id=request_id,
                 plant_id=plant_id,
@@ -958,6 +964,7 @@ async def analyze_upload(
                 analysis_mode=ml_result.get("analysis_mode"),
             )
         except Exception:
+            logger.exception("LLM upload response invalid; using deterministic fallback")
             # A malformed or schema-invalid LLM response must never discard a valid
             # deterministic ML result. Keep the report usable and make the AI limitation explicit.
             validated = AnalyzeResponse(

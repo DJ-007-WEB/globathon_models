@@ -18,7 +18,7 @@ MODEL_NAME = os.getenv("MODEL_NAME", "").strip() or None
 ADAPTER_PATH = os.getenv("ADAPTER_PATH", "models/solar-qwen-lora-final")
 ENVIRONMENT = os.getenv("ENVIRONMENT", "development").lower()
 SERVICE_TOKEN = os.getenv("INTERNAL_SERVICE_TOKEN")
-MAX_NEW_TOKENS = max(128, min(int(os.getenv("MAX_NEW_TOKENS", "450")), 1024))
+MAX_NEW_TOKENS = max(128, min(int(os.getenv("MAX_NEW_TOKENS", "700")), 1024))
 
 
 WARMUP_ON_STARTUP = os.getenv("LLM_WARMUP_ON_STARTUP", "").strip().lower() in {"1", "true", "yes", "on"}
