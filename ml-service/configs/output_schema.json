@@ -252,10 +252,30 @@
         }
       }
     },
-    "forecast_energy": { "type": ["number", "null"] },
-    "expected_energy": { "type": ["number", "null"] },
-    "actual_energy": { "type": ["number", "null"] },
-    "deviation": { "type": ["number", "null"] },
+    "forecast_energy": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "expected_energy": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "actual_energy": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "deviation": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
     "waterfall": {
       "type": "object",
       "additionalProperties": false,
@@ -708,6 +728,75 @@
           }
         }
       }
+    },
+    "expected_deviation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "value_kwh",
+        "status",
+        "source",
+        "completeness",
+        "aggregation_period",
+        "unit",
+        "reason",
+        "sign_convention"
+      ],
+      "properties": {
+        "value_kwh": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "available",
+            "partial",
+            "unavailable",
+            "not_applicable"
+          ]
+        },
+        "source": {
+          "type": "string"
+        },
+        "completeness": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 1
+        },
+        "aggregation_period": {
+          "type": "string"
+        },
+        "unit": {
+          "type": "string",
+          "enum": [
+            "kWh"
+          ]
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sign_convention": {
+          "type": "string",
+          "enum": [
+            "actual_minus_expected"
+          ]
+        }
+      }
+    },
+    "expected_deviation_kwh": {
+      "type": [
+        "number",
+        "null"
+      ]
     }
   },
   "$defs": {
