@@ -157,6 +157,16 @@ Invoke-RestMethod http://127.0.0.1:8001/ready
 
 A process health response is not proof the model is loaded. For live LLM inference, `/ready` must report `model_loaded: true`. Backend `/ready` reports downstream dependency state.
 
+## Verify the standard local runtime (Windows PowerShell)
+
+After starting the four services on ports 8000, 8001, 8002 and 5173, run:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\verify-local-runtime.ps1
+```
+
+The script checks the listening process/interpreter for each port, the 300-second backend LLM timeout, matching non-empty internal service tokens (without printing them), both trusted CORS origins, LLM warmup, backend dependency readiness and the Vite HTTP response. It exits non-zero if any check fails. It does not change local environment files or expose secret values.
+
 ## End-to-end acceptance test
 
 1. Confirm all four services are running and backend `/ready` can reach ML and LLM.
