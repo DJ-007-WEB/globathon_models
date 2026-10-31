@@ -410,19 +410,58 @@ export default function App() {
     e.preventDefault();
     const question = chatInput.trim();
     if (!latestTurn?.result?.request_id || !question || chatBusy) return;
-    setChatBusy(true); setChatError("");
-    try {
-      const response = await fetch(apiBase + "/api/v1/analyses/" + encodeURIComponent(latestTurn.result.request_id) + "/chat", {
-        method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + accessToken },
-        body: JSON.stringify({ question }), signal: AbortSignal.timeout(240000)
+    const requestId = latestTurn.result.request_id;
+    setChatBusy(true); setChatError(""); setChatInput("");
+    setChatMessages(old => [...old, { role: "user", content: question },
+      { role: "assistant", content: "Preparing an evidence-grounded response…" }]);
+    const updateStreamingAnswer = (content: string | Analysis) => {
+      setChatMessages(old => {
+        const next = [...old];
+        const last = next[next.length - 1];
+        if (last?.role === "assistant") next[next.length - 1] = { ...last, content };
+        return next;
       });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "The follow-up request could not be completed.");
-      setChatMessages(old => [...old, { role: "user", content: question },
-        { role: "assistant", content: data.answer }]);
-      setChatInput("");
+    };
+    try {
+      const response = await fetch(apiBase + "/api/v1/analyses/" + encodeURIComponent(requestId) + "/chat/stream", {
+        method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + accessToken },
+        body: JSON.stringify({ question }), signal: AbortSignal.timeout(300000)
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(typeof data.detail === "string" ? data.detail : "The follow-up request could not be completed.");
+      }
+      if (!response.body) throw new Error("This browser could not open the streaming response. Please retry.");
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let streamed = "";
+      let completed = false;
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const events = buffer.split(/\\r?\\n\\r?\\n/);
+        buffer = events.pop() || "";
+        for (const event of events) {
+          const eventName = event.match(/^event:\\s*(.+)$/m)?.[1]?.trim();
+          const dataLine = event.split(/\\r?\\n/).find(line => line.startsWith("data:"));
+          if (!dataLine) continue;
+          const payload = JSON.parse(dataLine.slice(5).trim() || "{}");
+          if (eventName === "delta" && typeof payload.text === "string") {
+            streamed += payload.text;
+            updateStreamingAnswer(streamed);
+          } else if (eventName === "done" && payload.answer) {
+            updateStreamingAnswer(payload.answer);
+            completed = true;
+          }
+        }
+      }
+      if (!completed) throw new Error("The response stream ended before the answer was complete. Please retry.");
     } catch (err) {
-      setChatError(err instanceof Error ? err.message : "Unable to send the follow-up question.");
+      const message = err instanceof Error ? err.message : "Unable to send the follow-up question.";
+      setChatError(message);
+      updateStreamingAnswer("I couldn't complete that response. Your question is still in this thread; please retry.");
     } finally { setChatBusy(false); }
   };
   const statusText=ready==="ready"?"ML + local AI ready":ready==="warming"?"ML connected · local AI model warming up":ready==="checking"?"Checking backend, ML and AI services":"Backend or a dependent service unavailable";
