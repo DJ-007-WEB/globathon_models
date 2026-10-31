@@ -615,22 +615,44 @@ async def health() -> dict:
 
 @app.get("/ready")
 async def ready() -> dict:
-    checks = {"ml_service_reachable": False, "llm_api_reachable": False, "model_loaded": False}
+    checks = {
+        "ml_service_reachable": False,
+        "llm_api_reachable": False,
+        "model_loaded": False,
+    }
+    ml_status = "unreachable"
+    llm_status = "unreachable"
     async with httpx.AsyncClient(timeout=httpx.Timeout(3.0, connect=1.0), trust_env=False) as client:
-        for key, url in (("ml_service_reachable", ML_API_URL), ("llm_api_reachable", LLM_API_URL)):
-            try:
-                response = await client.get(f"{url}/ready")
-                response.raise_for_status()
-                data = response.json()
-                checks[key] = data.get("status") in {"ready", "not_loaded"}
-                if key == "llm_api_reachable":
-                    checks["model_loaded"] = bool(data.get("model_loaded", False))
-            except (httpx.HTTPError, ValueError):
-                pass
-    is_ready = checks["ml_service_reachable"] and checks["llm_api_reachable"]
-    return {"status": "ready" if is_ready else "degraded",
-            "service": "solarsleuth-application-backend", **checks}
-
+        try:
+            response = await client.get(f"{ML_API_URL}/ready")
+            response.raise_for_status()
+            data = response.json()
+            ml_status = str(data.get("status", "unknown"))
+            checks["ml_service_reachable"] = ml_status == "ready"
+        except (httpx.HTTPError, ValueError):
+            pass
+        try:
+            response = await client.get(f"{LLM_API_URL}/ready")
+            response.raise_for_status()
+            data = response.json()
+            llm_status = str(data.get("status", "unknown"))
+            checks["llm_api_reachable"] = True
+            checks["model_loaded"] = bool(data.get("model_loaded", False))
+        except (httpx.HTTPError, ValueError):
+            pass
+    is_ready = (
+        checks["ml_service_reachable"]
+        and checks["llm_api_reachable"]
+        and checks["model_loaded"]
+        and llm_status == "ready"
+    )
+    return {
+        "status": "ready" if is_ready else "degraded",
+        "service": "solarsleuth-application-backend",
+        "ml_status": ml_status,
+        "llm_status": llm_status,
+        **checks,
+    }
 
 @app.post("/api/v1/analyze/upload", response_model=AnalyzeResponse)
 async def analyze_upload(
