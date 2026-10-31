@@ -248,7 +248,8 @@ async def _request_service(method: str, url: str, *, timeout_seconds: float, **k
 
 async def _run_ml(content: bytes, filename: str, *, plant_id: str, mode: str,
                   timezone: str | None, interval_minutes: float | None,
-                  sheet_name: str | None) -> dict:
+                  sheet_name: str | None,
+                  context_files: dict[str, tuple[str, bytes]] | None = None) -> dict:
     data = {"plant_id": plant_id, "mode": mode}
     if timezone:
         data["timezone"] = timezone
@@ -256,11 +257,14 @@ async def _run_ml(content: bytes, filename: str, *, plant_id: str, mode: str,
         data["interval_minutes"] = str(interval_minutes)
     if sheet_name:
         data["sheet_name"] = sheet_name
+    files = {"file": (filename, content, "application/octet-stream")}
+    for field, (context_name, context_content) in (context_files or {}).items():
+        files[field] = (context_name, context_content, "application/octet-stream")
     response = await _request_service(
         "POST", f"{ML_API_URL}/api/v1/analyze",
         timeout_seconds=ML_TIMEOUT_SECONDS,
         data=data,
-        files={"file": (filename, content, "application/octet-stream")},
+        files=files,
     )
     if response.status_code >= 400:
         if response.status_code in (401, 403):
@@ -286,28 +290,6 @@ async def _run_ml(content: bytes, filename: str, *, plant_id: str, mode: str,
     if status not in {"success", "partial"}:
         raise HTTPException(status_code=502, detail="The ML service returned an unknown analysis status.")
     return result
-
-
-async def _post_llm(payload: dict) -> dict:
-    response = await _request_service(
-        "POST", f"{LLM_API_URL}/api/v1/analyze",
-        timeout_seconds=LLM_TIMEOUT_SECONDS,
-        json=payload,
-    )
-    if response.status_code >= 400:
-        if response.status_code in (401, 403):
-            raise HTTPException(status_code=502, detail="The local LLM rejected internal service authentication.")
-        if response.status_code in (503, 504):
-            raise HTTPException(status_code=503, detail="The local LLM service is unavailable or not ready.")
-        raise HTTPException(status_code=502, detail="The local LLM could not produce an explanation.")
-    try:
-        value = response.json()
-    except ValueError as exc:
-        raise HTTPException(status_code=502, detail="The local LLM returned invalid JSON.") from exc
-    if not isinstance(value, dict):
-        raise HTTPException(status_code=502, detail="The local LLM returned an invalid response object.")
-    return value
-
 
 @app.post("/api/v1/auth/register")
 async def register_account(payload: RegisterPayload) -> dict:
@@ -727,6 +709,10 @@ async def ready() -> dict:
 @app.post("/api/v1/analyze/upload", response_model=AnalyzeResponse)
 async def analyze_upload(
     file: UploadFile = File(...),
+    weather_file: UploadFile | None = File(None),
+    forecast_file: UploadFile | None = File(None),
+    devices_file: UploadFile | None = File(None),
+    event_log_file: UploadFile | None = File(None),
     plant_id: str = Form("unknown-plant"),
     mode: str = Form("auto"),
     timezone: str | None = Form(None),
@@ -765,6 +751,31 @@ async def analyze_upload(
         raise HTTPException(status_code=413, detail="Upload exceeds the configured size limit.")
     _validate_file_signature(filename, content)
 
+    context_uploads = {
+        "weather_file": weather_file,
+        "forecast_file": forecast_file,
+        "devices_file": devices_file,
+        "event_log_file": event_log_file,
+    }
+    context_files: dict[str, tuple[str, bytes]] = {}
+    total_size = len(content)
+    for field, upload in context_uploads.items():
+        if upload is None:
+            continue
+        context_name = _safe_filename(upload.filename)
+        if Path(context_name).suffix.lower() not in {".csv", ".xlsx"}:
+            await upload.close()
+            raise HTTPException(status_code=415, detail=f"{field} must be a CSV or XLSX file.")
+        context_content = await upload.read(MAX_UPLOAD_BYTES + 1)
+        await upload.close()
+        if not context_content:
+            raise HTTPException(status_code=422, detail=f"{field} is empty.")
+        total_size += len(context_content)
+        if total_size > MAX_UPLOAD_BYTES:
+            raise HTTPException(status_code=413, detail="Combined upload exceeds the configured size limit.")
+        _validate_file_signature(context_name, context_content)
+        context_files[field] = (context_name, context_content)
+
     try:
         await asyncio.wait_for(ANALYSIS_SLOTS.acquire(), timeout=0.1)
     except asyncio.TimeoutError as exc:
@@ -773,6 +784,7 @@ async def analyze_upload(
         ml_result = await _run_ml(
             content, filename, plant_id=plant_id, mode=mode, timezone=timezone,
             interval_minutes=interval_minutes, sheet_name=sheet_name,
+            context_files=context_files,
         )
         ml_status = ml_result.get("analysis_status")
         if ml_status in {"invalid_input", "failed"}:
@@ -809,7 +821,6 @@ async def analyze_upload(
                 "analysis_mode": ml_result.get("analysis_mode"),
             })
         except HTTPException as exc:
-            # Preserve a valid deterministic result if only explanation fails.
             if exc.status_code not in {502, 503, 504}:
                 raise
             validated = AnalyzeResponse(
@@ -829,7 +840,6 @@ async def analyze_upload(
                 analysis_mode=ml_result.get("analysis_mode"),
             )
         except Exception as exc:
-            # Do not leak upstream exception text or discard successful ML facts.
             raise HTTPException(status_code=502, detail="The local LLM returned an invalid explanation response.") from exc
         await _persist_analysis(account, filename, plant_id, validated)
         return validated
