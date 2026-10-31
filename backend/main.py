@@ -24,7 +24,7 @@ from starlette.concurrency import run_in_threadpool
 
 import httpx
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, Form, Header, HTTPException, UploadFile
+from fastapi import Body, FastAPI, File, Form, Header, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 import json
@@ -615,7 +615,7 @@ def _fallback_chat_answer(question: str, ml_result: dict, prior_explanation: dic
 
 
 @app.post("/api/v1/analyses/{request_id}/chat")
-async def ask_about_analysis(request_id: str, payload: AnalysisChatPayload,
+async def ask_about_analysis(request_id: str, payload: AnalysisChatPayload = Body(...),
                              authorization: str | None = Header(None, alias="Authorization")) -> dict:
     account = _authorize_browser(authorization)
     question = payload.question.strip()
@@ -720,7 +720,7 @@ def _chat_answer_as_text(answer: dict) -> str:
 @app.post("/api/v1/analyses/{request_id}/chat/stream")
 async def stream_analysis_chat(
     request_id: str,
-    payload: AnalysisChatPayload,
+    payload: AnalysisChatPayload = Body(...),
     authorization: str | None = Header(None, alias="Authorization"),
 ):
     """Stream a grounded follow-up answer over SSE after the local model completes.
