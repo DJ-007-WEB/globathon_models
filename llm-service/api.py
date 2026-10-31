@@ -106,7 +106,8 @@ async def analyze(
             detail="Configured local model or LoRA adapter files are unavailable. Check ADAPTER_PATH and adapter metadata.",
         ) from exc
     except (ValueError, RuntimeError) as exc:
-        service.last_inference_error = "The latest inference failed validation or generation."
+        if not service.last_inference_error:
+            service.last_inference_error = f"Inference failed: {type(exc).__name__}: {exc}"
         raise HTTPException(status_code=503, detail="Local model inference could not produce a valid explanation.") from exc
     service.last_inference_error = None
     return AnalyzeResponse(
