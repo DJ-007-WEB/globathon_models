@@ -260,3 +260,34 @@ Execute one task at a time. Do not run the full test suite until the final valid
 - The demo dataset produces useful, non-generic output.
 - All short regression checks pass.
 - No secrets or model weights are committed.
+
+## Execution Update — 2026-10-31
+
+### Implemented on `product-transformation`
+
+- [x] LLM inference now makes one corrective retry with the original evidence and an explicit JSON contract.
+- [x] LLM response normalization repairs common small-model shape errors, fills safe defaults, and preserves strict response validation.
+- [x] LLM readiness now distinguishes model loading from the last inference failure; backend readiness exposes the downstream model name and inference error.
+- [x] Follow-up chat falls back to a clearly labelled deterministic answer assembled only from the saved ML report when local LLM inference is unavailable. The fallback does not invent causes or measurements and is persisted in chat history.
+- [x] Older backend deployments without the streaming route are handled by a non-streaming chat fallback.
+- [x] Fixed the ML output-schema regression: `expected_deviation` and `expected_deviation_kwh` were required by the contract but missing from its `properties`, causing 19 deterministic-ML tests to fail.
+- [x] Exposed optional weather, forecast, device and event-log files through the frontend, backend and ML API. The Python pipeline receives a named temporary input directory; single-file uploads remain supported.
+- [x] Waterfall unavailability now identifies the exact missing energy component and reason.
+- [x] Added regression coverage for the supplied `solar_plant_30day_stress.csv` headers and the correct no-forecast behavior.
+
+### Verification
+
+- [x] A full CI run passed all four jobs (deterministic ML, backend, LLM API and frontend) after the schema, multi-file upload and UI changes.
+- [x] The stress-dataset and actionable-waterfall regression tests passed in the subsequent full CI run.
+- [x] Backend, LLM API and frontend checks passed after the follow-up chat fallback and route-registration fix; the newest deterministic-ML job was still running when this note was written.
+
+### Still requires the user's live environment
+
+- [ ] Verify the four local services and their interpreters on ports 8000, 8001, 8002 and 5173.
+- [ ] Warm the actual local model and verify the shared service token and CORS settings.
+- [ ] Run the real browser upload, persistence, history and follow-up flow against the user's database.
+- [ ] Upload a separate forecast file to make forecast-relative waterfall reconciliation available. The supplied stress CSV has actual energy and baseline inputs but no forecast column; forecast values must not be fabricated.
+- [ ] Evaluate LLM explanation quality on healthy, underperforming and partial-data cases.
+- [ ] Complete remaining frontend polish, performance checks and deployment validation.
+
+Live browser/runtime validation cannot be claimed from repository CI alone; it must be completed against the running local services.
