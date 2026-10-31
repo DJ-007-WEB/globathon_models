@@ -177,7 +177,7 @@ class LLMService:
             tokenizer = AutoTokenizer.from_pretrained(tokenizer_source, trust_remote_code=True)
             base_model = AutoModelForCausalLM.from_pretrained(
                 base_name,
-                torch_dtype=dtype,
+                dtype=dtype,
                 device_map="auto",
                 low_cpu_mem_usage=True,
                 trust_remote_code=True,
