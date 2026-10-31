@@ -208,3 +208,65 @@ def test_opt_in_startup_warmup_loads_model(monkeypatch):
         ready = client.get("/ready").json()
     assert ready["model_loaded"] is True
     assert ready["model_name"] == "startup-test-model"
+
+def test_prompt_builder_preserves_ml_evidence_and_avoids_silent_truncation():
+    from llm_service import LLMService
+    from schemas import AnalysisRequest
+
+    class Tokenizer:
+        chat_template = None
+        @staticmethod
+        def encode(text, add_special_tokens=False):
+            return list(range(max(1, len(text) // 4)))
+
+    service = LLMService.__new__(LLMService)
+    service.tokenizer = Tokenizer()
+    service.max_input_tokens = 1800
+    request = AnalysisRequest(
+        plant_id="plant-1",
+        observations={"analysis_status": "partial", "summary": "ML completed."},
+        ml_results={
+            "analysis_status": "partial",
+            "energy": {
+                "actual": {"value_kwh": 123.45, "unit": "kWh"},
+                "expected": {"value_kwh": 150.0, "unit": "kWh"},
+                "forecast": {"value_kwh": None, "reason": "No forecast file was supplied."},
+            },
+            "expected_deviation_kwh": -26.55,
+            "evidence": ["long evidence item " + str(i) + " x" * 90 for i in range(100)],
+        },
+        retrieved_context=["old chat " + "x" * 1000 for _ in range(10)],
+    )
+    prompt, token_count = service._prepare_prompt(request)
+    assert token_count <= service.max_input_tokens
+    assert prompt.index('"ml_results"') < prompt.index('"observations"')
+    assert '"value_kwh":123.45' in prompt
+    assert '"expected_deviation_kwh":-26.55' in prompt
+    assert "No forecast file was supplied." in prompt
+    assert '"retrieved_context":[]' in prompt
+
+
+def test_prompt_builder_refuses_when_core_ml_payload_alone_exceeds_budget():
+    from llm_service import LLMService
+    from schemas import AnalysisRequest
+
+    class Tokenizer:
+        chat_template = None
+        @staticmethod
+        def encode(text, add_special_tokens=False):
+            return list(range(max(1, len(text) // 4)))
+
+    service = LLMService.__new__(LLMService)
+    service.tokenizer = Tokenizer()
+    service.max_input_tokens = 100
+    request = AnalysisRequest(
+        plant_id="plant-1",
+        observations={"summary": "x" * 5000},
+        ml_results={"energy": {"actual": {"value_kwh": 1.0}}},
+    )
+    try:
+        service._prepare_prompt(request)
+    except ValueError as exc:
+        assert "refusing to silently truncate" in str(exc)
+    else:
+        raise AssertionError("Oversized prompts must fail explicitly, not be truncated.")
