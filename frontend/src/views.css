@@ -165,3 +165,14 @@
   background: var(--surface-soft, #f8fafc);
 }
 .comparison-table td:first-child { font-weight: 650; }
+
+
+/* Device-level energy performance */
+.device-panel{margin-top:16px}
+.device-performance{width:100%;overflow-x:auto;margin-top:12px}
+.device-performance-head,.device-performance-row{display:grid;grid-template-columns:minmax(110px,1.1fr) repeat(3,minmax(105px,1fr));gap:12px;align-items:center;min-width:560px;padding:11px 13px;border-bottom:1px solid var(--line)}
+.device-performance-head{font-size:10px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);background:var(--surface-2);border:1px solid var(--line);border-radius:9px 9px 0 0}
+.device-performance-row{font-size:12px;color:var(--ink-2);font-variant-numeric:tabular-nums}
+.device-performance-row strong{color:var(--ink);font-size:13px}
+.device-negative{color:var(--chart-neg);font-weight:750}
+.device-positive{color:var(--chart-pos);font-weight:750}
