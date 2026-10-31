@@ -647,15 +647,15 @@ async def stream_analysis_chat(
     rendered = _chat_answer_as_text(answer)
 
     async def events():
-        yield "event: start\\ndata: {}\\n\\n"
+        yield "event: start\ndata: {}\n\n"
         for offset in range(0, len(rendered), 48):
             chunk = rendered[offset:offset + 48]
-            yield "event: delta\\ndata: " + json.dumps({"text": chunk}, ensure_ascii=False) + "\\n\\n"
+            yield "event: delta\ndata: " + json.dumps({"text": chunk}, ensure_ascii=False) + "\n\n"
             await asyncio.sleep(0.015)
-        yield "event: done\\ndata: " + json.dumps({
+        yield "event: done\ndata: " + json.dumps({
             "answer": answer, "model": result.get("model"),
             "created_at": result.get("created_at"),
-        }, ensure_ascii=False) + "\\n\\n"
+        }, ensure_ascii=False) + "\n\n"
 
     return StreamingResponse(
         events(), media_type="text/event-stream",
