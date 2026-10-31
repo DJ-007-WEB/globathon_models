@@ -949,16 +949,8 @@ async def analyze_upload(
             validated = AnalyzeResponse(
                 request_id=request_id,
                 plant_id=plant_id,
-                model="unavailable",
-                analysis={
-                    "summary": "Deterministic analysis completed, but the local AI explanation is unavailable.",
-                    "observations": [],
-                    "possible_causes": [],
-                    "supporting_evidence": [],
-                    "recommended_checks": [],
-                    "limitations": ["The LLM service did not return a validated explanation. Review the ML analysis below."],
-                    "confidence": "insufficient_evidence",
-                },
+                model="deterministic-fallback",
+                analysis=_fallback_chat_answer("Explain the deterministic ML analysis and energy deviation.", ml_result),
                 ml_analysis=ml_result,
                 analysis_mode=ml_result.get("analysis_mode"),
             )
@@ -968,8 +960,8 @@ async def analyze_upload(
             validated = AnalyzeResponse(
                 request_id=request_id,
                 plant_id=plant_id,
-                model="unavailable",
-                analysis=_unavailable_llm_explanation(ml_result),
+                model="deterministic-fallback",
+                analysis=_fallback_chat_answer("Explain the deterministic ML analysis and energy deviation.", ml_result),
                 ml_analysis=ml_result,
                 analysis_mode=ml_result.get("analysis_mode"),
             )
