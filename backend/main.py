@@ -276,7 +276,13 @@ async def _run_ml(content: bytes, filename: str, *, plant_id: str, mode: str,
         raise HTTPException(status_code=502, detail="The ML service returned an invalid result object.")
     status = result.get("analysis_status")
     if status in {"invalid_input", "failed"}:
-        raise HTTPException(status_code=422, detail="The uploaded dataset did not pass deterministic ML validation.")
+        errors = result.get("errors") if isinstance(result.get("errors"), list) else []
+        first_error = errors[0] if errors and isinstance(errors[0], dict) else {}
+        detail = str(first_error.get("message") or "The uploaded dataset did not pass deterministic ML validation.")
+        field = first_error.get("field")
+        if field:
+            detail += f" (field: {field})"
+        raise HTTPException(status_code=422, detail=detail)
     if status not in {"success", "partial"}:
         raise HTTPException(status_code=502, detail="The ML service returned an unknown analysis status.")
     return result
