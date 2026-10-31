@@ -385,3 +385,25 @@ def test_streaming_chat_emits_progressive_answer_and_final_structured_payload(mo
     assert "event: done" in response.text
     assert '"confidence": "moderate"' in response.text
 
+def test_deterministic_chat_fallback_uses_only_saved_ml_values():
+    answer = main._fallback_chat_answer(
+        "What is driving the energy deviation?",
+        {
+            "analysis_status": "partial",
+            "summary": "Measured energy is available but forecast data is missing.",
+            "energy": {
+                "forecast": {"value_kwh": None, "reason": "No forecast file was supplied."},
+                "expected": {"value_kwh": 100.0, "reason": None},
+                "actual": {"value_kwh": 92.5, "reason": None},
+                "deviation": {"value_kwh": None, "reason": "Forecast energy is unavailable."},
+            },
+            "hypotheses": [],
+            "anomalies": [],
+            "limitations": ["Forecast data is missing."],
+        },
+    )
+    assert "expected energy is 100.0 kWh" in answer["summary"]
+    assert "measured actual energy is 92.5 kWh" in answer["summary"]
+    assert answer["possible_causes"] == []
+    assert answer["confidence"] == "insufficient_evidence"
+    assert any("No forecast file was supplied." in item for item in answer["limitations"])
