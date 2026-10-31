@@ -683,6 +683,9 @@ async def ready() -> dict:
     }
     ml_status = "unreachable"
     llm_status = "unreachable"
+    llm_error = None
+    llm_model_name = None
+    llm_adapter_available = False
     async with httpx.AsyncClient(timeout=httpx.Timeout(3.0, connect=1.0), trust_env=False) as client:
         try:
             response = await client.get(f"{ML_API_URL}/ready")
@@ -699,6 +702,9 @@ async def ready() -> dict:
             llm_status = str(data.get("status", "unknown"))
             checks["llm_api_reachable"] = True
             checks["model_loaded"] = bool(data.get("model_loaded", False))
+            llm_error = data.get("last_inference_error") or data.get("load_error")
+            llm_model_name = data.get("model_name")
+            llm_adapter_available = bool(data.get("adapter_available", False))
         except (httpx.HTTPError, ValueError):
             pass
     is_ready = (
@@ -712,6 +718,9 @@ async def ready() -> dict:
         "service": "solarsleuth-application-backend",
         "ml_status": ml_status,
         "llm_status": llm_status,
+        "llm_error": llm_error,
+        "llm_model_name": llm_model_name,
+        "llm_adapter_available": llm_adapter_available,
         **checks,
     }
 
