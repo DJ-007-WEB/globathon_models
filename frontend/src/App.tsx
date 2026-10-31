@@ -446,41 +446,62 @@ export default function App() {
       });
     };
     try {
-      const response = await fetch(apiBase + "/api/v1/analyses/" + encodeURIComponent(requestId) + "/chat/stream", {
+      let response = await fetch(apiBase + "/api/v1/analyses/" + encodeURIComponent(requestId) + "/chat/stream", {
         method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + accessToken },
         body: JSON.stringify({ question }), signal: AbortSignal.timeout(300000)
       });
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        throw new Error(typeof data.detail === "string" ? data.detail : "The follow-up request could not be completed.");
-      }
-      if (!response.body) throw new Error("This browser could not open the streaming response. Please retry.");
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      let streamed = "";
-      let completed = false;
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const events = buffer.split(/\r?\n\r?\n/);
-        buffer = events.pop() || "";
-        for (const event of events) {
-          const eventName = event.match(/^event:\s*(.+)$/m)?.[1]?.trim();
-          const dataLine = event.split(/\r?\n/).find(line => line.startsWith("data:"));
-          if (!dataLine) continue;
-          const payload = JSON.parse(dataLine.slice(5).trim() || "{}");
-          if (eventName === "delta" && typeof payload.text === "string") {
-            streamed += payload.text;
-            updateStreamingAnswer(streamed);
-          } else if (eventName === "done" && payload.answer) {
-            updateStreamingAnswer(payload.answer);
-            completed = true;
-          }
+      let usedFallback = false;
+      // Older deployed backends may expose /chat but not /chat/stream yet.
+      if (response.status === 404 || response.status === 405) {
+        const fallback = await fetch(apiBase + "/api/v1/analyses/" + encodeURIComponent(requestId) + "/chat", {
+          method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + accessToken },
+          body: JSON.stringify({ question }), signal: AbortSignal.timeout(300000)
+        });
+        if (fallback.ok) {
+          const data = await fallback.json();
+          if (!data.answer) throw new Error("The chat service returned an empty answer.");
+          updateStreamingAnswer(data.answer);
+          usedFallback = true;
+        } else {
+          const data = await fallback.json().catch(() => ({}));
+          const detail = typeof data.detail === "string" ? data.detail : "The saved analysis could not be found. Reopen the report and try again.";
+          throw new Error(detail);
         }
       }
-      if (!completed) throw new Error("The response stream ended before the answer was complete. Please retry.");
+      if (!usedFallback) {
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({}));
+          const detail = typeof data.detail === "string" ? data.detail : "The follow-up request could not be completed.";
+          throw new Error(detail);
+        }
+        if (!response.body) throw new Error("This browser could not open the streaming response. Please retry.");
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        let streamed = "";
+        let completed = false;
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const events = buffer.split(/\\r?\\n\\r?\\n/);
+          buffer = events.pop() || "";
+          for (const event of events) {
+            const eventName = event.match(/^event:\\s*(.+)$/m)?.[1]?.trim();
+            const dataLine = event.split(/\\r?\\n/).find(line => line.startsWith("data:"));
+            if (!dataLine) continue;
+            const payload = JSON.parse(dataLine.slice(5).trim() || "{}");
+            if (eventName === "delta" && typeof payload.text === "string") {
+              streamed += payload.text;
+              updateStreamingAnswer(streamed);
+            } else if (eventName === "done" && payload.answer) {
+              updateStreamingAnswer(payload.answer);
+              completed = true;
+            }
+          }
+        }
+        if (!completed) throw new Error("The response stream ended before the answer was complete. Please retry.");
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unable to send the follow-up question.";
       setChatError(message);
