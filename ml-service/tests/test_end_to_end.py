@@ -76,3 +76,28 @@ def test_enriched_four_inverter_csv_runs_through_full_operating_pipeline(tmp_pat
     assert result["expected_energy"] is not None
     assert result["unresolved_fields"] == []
     assert any("marked synthetic" in item for item in result["limitations"])
+
+
+def test_multiple_scenarios_are_rejected_instead_of_aggregated():
+    import pandas as pd
+
+    from src.service import analyze
+
+    timestamps = pd.date_range("2024-01-01T10:00:00Z", periods=2, freq="15min")
+    operating = pd.DataFrame({
+        "scenario_id": ["scenario_A", "scenario_B"],
+        "timestamp_utc": timestamps,
+        "inverter_id": ["INV-01", "INV-01"],
+        "ac_power_kw": [50.0, 75.0],
+        "energy_kwh": [12.5, 18.75],
+        "poa_irradiance_w_m2": [500.0, 700.0],
+        "rated_ac_power_kw": [125.0, 125.0],
+    })
+
+    result = analyze(operating, mode="full")
+
+    assert result["analysis_status"] == "invalid_input"
+    error = next(item for item in result["errors"] if item["code"] == "MULTIPLE_SCENARIOS_UNSUPPORTED")
+    assert error["field"] == "scenario_id"
+    assert error["details"]["scenario_count"] == 2
+    assert result["actual_energy"] is None
