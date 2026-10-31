@@ -277,7 +277,14 @@ async def _run_ml(content: bytes, filename: str, *, plant_id: str, mode: str,
         if response.status_code in (401, 403):
             raise HTTPException(status_code=502, detail="The ML service rejected internal service authentication.")
         if response.status_code in (413, 415, 422):
-            raise HTTPException(status_code=response.status_code, detail="The deterministic ML service rejected this dataset.")
+            # ML boundary errors are user-facing validation messages, not internal details.
+            try:
+                detail = response.json().get("detail")
+            except ValueError:
+                detail = None
+            if not isinstance(detail, str) or len(detail) > 300:
+                detail = "The deterministic ML service rejected this dataset."
+            raise HTTPException(status_code=response.status_code, detail=detail)
         raise HTTPException(status_code=502, detail="The deterministic ML service could not process this dataset.")
     try:
         result = response.json()

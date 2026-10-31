@@ -8,9 +8,11 @@ from __future__ import annotations
 
 import asyncio
 import hmac
+import io
 import math
 import os
 import tempfile
+import zipfile
 from pathlib import Path
 from typing import Literal
 
@@ -27,6 +29,9 @@ MAX_CONCURRENT_ANALYSES = max(1, int(os.getenv("MAX_CONCURRENT_ANALYSES", "2")))
 ENVIRONMENT = os.getenv("ENVIRONMENT", "development").lower()
 SERVICE_TOKEN = os.getenv("INTERNAL_SERVICE_TOKEN") or os.getenv("ML_SERVICE_TOKEN")
 ANALYSIS_SLOTS = asyncio.Semaphore(MAX_CONCURRENT_ANALYSES)
+MAX_ROWS = int(os.getenv("MAX_ROWS", "1000000"))
+MAX_COLUMNS = int(os.getenv("MAX_COLUMNS", "500"))
+MAX_XLSX_UNCOMPRESSED_BYTES = int(os.getenv("MAX_XLSX_UNCOMPRESSED_BYTES", str(250 * 1024 * 1024)))
 
 app = FastAPI(
     title="SolarSleuth Deterministic ML API",
@@ -52,6 +57,13 @@ def validate_upload(filename: str, content: bytes) -> None:
     if suffix == ".xlsx":
         if not content.startswith(bytes((0x50, 0x4B, 0x03, 0x04))):
             raise HTTPException(status_code=415, detail="The XLSX file signature is invalid.")
+        try:
+            with zipfile.ZipFile(io.BytesIO(content)) as archive:
+                expanded = sum(item.file_size for item in archive.infolist())
+        except zipfile.BadZipFile as exc:
+            raise HTTPException(status_code=415, detail="The XLSX workbook is not a readable ZIP archive.") from exc
+        if expanded > MAX_XLSX_UNCOMPRESSED_BYTES:
+            raise HTTPException(status_code=413, detail="The XLSX workbook expands beyond the allowed size.")
         return
     if suffix == ".csv":
         if content.startswith((bytes((0x50, 0x4B, 0x03, 0x04)), bytes((0xD0, 0xCF, 0x11, 0xE0)))):
@@ -63,6 +75,11 @@ def validate_upload(filename: str, content: bytes) -> None:
         header = next((line for line in decoded.splitlines() if line.strip()), "")
         if not header or not any(delimiter in header for delimiter in (",", ";", chr(9))):
             raise HTTPException(status_code=422, detail="The CSV must contain a delimited header row.")
+        delimiter = max((",", ";", chr(9)), key=header.count)
+        if header.count(delimiter) + 1 > MAX_COLUMNS:
+            raise HTTPException(status_code=413, detail=f"The CSV has more than {MAX_COLUMNS} columns.")
+        if decoded.count("\n") > MAX_ROWS + 1:
+            raise HTTPException(status_code=413, detail=f"The CSV has more than {MAX_ROWS:,} data rows.")
         return
     raise HTTPException(status_code=415, detail="Only CSV and XLSX operating-data files are supported.")
 

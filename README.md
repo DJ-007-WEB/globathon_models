@@ -204,6 +204,10 @@ sent; this is progressive browser delivery, not token-by-token model decoding.
 The frontend renders the stream with React elements (no HTML injection) and
 then switches to the structured explanation view.
 
+## Linux/CI live end-to-end harness
+
+`scripts/e2e/` runs the real ML service, backend and frontend on the standard ports with an in-memory MongoDB and a scripted LLM generator, then drives the API and a Chromium browser through register → plant → upload (CSV, XLSX, multi-file) → report → multi-turn chat. See [scripts/e2e/README.md](scripts/e2e/README.md). It verifies wiring and fallbacks, not model quality.
+
 ## API documentation
 
 With a service running, open:

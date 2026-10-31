@@ -37,7 +37,8 @@ This branch combines four independently testable services under dedicated top-le
 - Business-scoped plant directory (create/list/update API; UI supports registration and plant selection).
 - CSV/XLSX upload and ML-first analysis orchestration.
 - Saved analysis history and detail retrieval, business scoped; optional plant filter is indexed.
-- Validation Lab, report views and report-grounded follow-up chat with persisted conversation.
+- Four-destination workspace (Overview, Upload & analyse, Reports, AI explanation); validation detail and plant management are sub-views.
+- Reports include the ML column/unit mapping, validation record and AI explanation; report-grounded follow-up chat with persisted conversation.
 - Explicit ML fallback behavior when LLM is unavailable.
 
 ## Known limitations
@@ -46,7 +47,7 @@ This branch combines four independently testable services under dedicated top-le
 - No plant deletion UI/API; avoid destructive deletion of plants with report history.
 - No live inference guarantee without installing the local model and complete PEFT adapter.
 - A passing automated suite does not prove MongoDB Atlas credentials, local GPU compatibility, model quality or live full-stack operation.
-- Upload endpoint does not expose separate weather/device/forecast/event-log files.
+- Optional weather/forecast/device/event-log files are accepted alongside the operating file; each input's column mapping is reported. No production rate limiting yet.
 - Plant dashboard visualizations/report comparison must only use metrics present in the deterministic ML result; never fabricate missing values.
 
 ## Local setup and tests

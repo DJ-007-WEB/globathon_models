@@ -329,3 +329,37 @@ Implementation is being applied incrementally on `product-transformation`. Do no
 - Confirm the deployment target. Current repository branches do not include a branch named `production`; do not deploy or merge based on an assumed production branch.
 - Run final CI for the latest commit, review deployment environment variables and perform a clean-checkout demo rehearsal.
 
+
+---
+
+## Execution log — 2026-10-31 (second pass)
+
+### Live runtime verification (Linux container, standard ports)
+
+The four services were started on 8000/8001/8002/5173 with a shared internal token and
+the real ML, backend and frontend code. MongoDB was replaced with in-process `mongomock`
+and LLM generation with scripted output (no model weights or MongoDB/HF access here).
+The harness is committed under `scripts/e2e/`.
+
+- [x] P0-1 (partial): ML `/ready`, LLM `/warmup` + `/ready`, backend `/ready` = `ready`, Vite 200, CORS for `http://localhost:5173`. Windows interpreter paths still need `scripts/verify-local-runtime.ps1` on the developer machine.
+- [x] P0-2: register → plant → upload enriched CSV, the same data as XLSX, and a multi-file upload (operating + weather + forecast + devices) → `expected_deviation_kwh` numeric, `persistence_status` equivalent (history detail equals upload response) → streamed chat + second follow-up → 4 persisted messages. Browser run: four-item nav, stepper, report with mapping table, two chat turns, history survives reload, zero console errors, browser only calls port 8001 (plus Google Fonts).
+- [x] P0-3 live defects fixed:
+  - **Every valid XLSX upload was rejected (415)** — the backend compared against escaped byte literals (`b"PK\\x03\\x04"`). Tab-delimited CSVs were rejected the same way. Regression test added.
+  - ML 413/415/422 validation messages are now passed to the browser instead of a generic message.
+- [x] Failure isolation verified live: LLM stopped / LLM inference failing → upload and chat return `deterministic-fallback` with ML preserved and readiness `degraded` with the error; ML stopped → upload 503, no LLM call.
+
+### Implemented
+
+- **P0-4 LLM quality guardrails:** every explanation passes an evidence guard — statements quoting a measurement (kWh, kW, W/m², %, °C) absent from the ML payload are removed (display rounding tolerated) and counted in limitations; possible causes are cleared when ML returned no anomaly/hypothesis; "confirmed" causes are prefixed "Unconfirmed hypothesis"; confidence is capped at moderate for partial results and low for failed data quality. The prompt now requires the summary to answer the follow-up question directly.
+- **P1-1 chat:** retry for failed answers, suggested follow-ups after each answer, stable message keys, fallback model label kept on streamed answers. Deterministic fallback now cites per-inverter totals and measured-minus-expected energy.
+- **P1-2 frontend:** sidebar reduced to Overview / Upload & analyse / Reports / AI explanation (requirements §2); real upload progress and pipeline stepper with elapsed time; skeleton loaders; analysis-status and data-quality badges; partial-result note; actual-minus-expected KPI; column/unit mapping section; verification disclaimer; last local-AI error in service status.
+- **P1-3 ML completeness:** diagnosed `unresolved_schema_mapping` — unmapped auxiliary columns (e.g. `plant_name`, `grid_frequency_hz`, `alarm_code`, `soiling_index`) downgraded otherwise complete analyses to `partial`. They are now listed as a limitation and no longer force partial; missing required fields still do. The enriched sample is now `partial` only because no forecast file was supplied. Added an additive `column_mapping` contract section (source column → canonical role, units, conversion rule, confidence, used/not used) for every input table.
+- **P1-4 reliability:** identical prompts reuse the validated explanation (greedy decoding is deterministic); 429 busy message in the UI; production `/ready` no longer relays raw LLM error text or model paths to the browser.
+- **Upload hardening:** ML boundary enforces CSV row/column limits and an XLSX decompression limit (`MAX_ROWS`, `MAX_COLUMNS`, `MAX_XLSX_UNCOMPRESSED_BYTES`).
+
+### Still requires the developer's environment
+
+- [ ] Run `scripts/verify-local-runtime.ps1` on Windows with the real PEFT adapter and MongoDB.
+- [ ] Evaluate real model output on healthy / underperforming / partial datasets (the grounding guard is tested with scripted output only).
+- [ ] Measure real CPU inference time against the 300 s timeout.
+- [ ] Confirm the deployment branch (no `production` branch exists) and add rate limiting before any public deployment.

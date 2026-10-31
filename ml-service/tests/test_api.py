@@ -186,3 +186,22 @@ def test_upload_passes_optional_context_files_as_named_directory_inputs(monkeypa
     assert "operating_plant.csv" in captured["files"]
     assert "forecast_forecast.csv" in captured["files"]
     assert "weather_weather.csv" in captured["files"]
+
+
+def test_upload_enforces_row_column_and_decompression_limits(monkeypatch):
+    import io
+    import zipfile
+
+    monkeypatch.setattr(api, "MAX_ROWS", 2)
+    monkeypatch.setattr(api, "MAX_COLUMNS", 3)
+    monkeypatch.setattr(api, "MAX_XLSX_UNCOMPRESSED_BYTES", 1000)
+    bomb = io.BytesIO()
+    with zipfile.ZipFile(bomb, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("xl/worksheets/sheet1.xml", "0" * 5000)
+    with TestClient(api.app) as client:
+        wide = client.post("/api/v1/analyze", files={"file": ("wide.csv", b"a,b,c,d\n1,2,3,4\n")})
+        tall = client.post("/api/v1/analyze", files={"file": ("tall.csv", b"a,b\n1,2\n3,4\n5,6\n7,8\n")})
+        expanded = client.post("/api/v1/analyze", files={"file": ("bomb.xlsx", bomb.getvalue())})
+    assert wide.status_code == 413
+    assert tall.status_code == 413
+    assert expanded.status_code == 413
