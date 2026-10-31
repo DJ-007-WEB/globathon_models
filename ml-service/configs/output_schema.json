@@ -254,6 +254,7 @@
               "SHEET_NOT_FOUND",
               "MISSING_REQUIRED_FIELDS",
               "AMBIGUOUS_TIMESTAMP",
+              "MULTIPLE_SCENARIOS_UNSUPPORTED",
               "INVALID_ARGUMENT",
               "INTERNAL_ERROR"
             ]
