@@ -1,5 +1,5 @@
 // Multipart upload with real progress (fetch cannot report upload progress).
-import { getApiBase, getToken, messageFor, ApiError } from "./client";
+import { getApiBase, getToken, messageFor, ApiError, TUNNEL_HEADERS } from "./client";
 import type { AnalyzeResponse } from "../types/backend";
 
 export interface UploadFiles { operating: File; weather?: File | null; forecast?: File | null; devices?: File | null; events?: File | null }
@@ -25,6 +25,7 @@ export function uploadAnalysis(files: UploadFiles, options: UploadOptions, handl
     xhr.open("POST", getApiBase() + "/api/v1/analyze/upload");
     const token = getToken();
     if (token) xhr.setRequestHeader("Authorization", "Bearer " + token);
+    for (const [key, value] of Object.entries(TUNNEL_HEADERS)) xhr.setRequestHeader(key, value);
     xhr.timeout = 540000;
     xhr.upload.onprogress = (event) => { if (event.lengthComputable) handlers.onProgress(event.loaded / event.total); };
     xhr.upload.onload = () => { handlers.onProgress(1); handlers.onUploaded(); };

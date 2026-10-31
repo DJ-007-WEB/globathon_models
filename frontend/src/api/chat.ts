@@ -1,5 +1,5 @@
 // Report-grounded follow-up chat: SSE stream with a non-streaming fallback for older backends.
-import { getApiBase, getToken, messageFor, ApiError } from "./client";
+import { getApiBase, getToken, messageFor, ApiError, TUNNEL_HEADERS } from "./client";
 import { askChat } from "./endpoints";
 import type { Explanation } from "../types/backend";
 
@@ -9,7 +9,7 @@ export async function streamChat(requestId: string, question: string, onDelta: (
   try {
     response = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: "Bearer " + getToken() },
+      headers: { ...TUNNEL_HEADERS, "Content-Type": "application/json", Authorization: "Bearer " + getToken() },
       body: JSON.stringify({ question }),
       signal: AbortSignal.timeout(300000),
     });

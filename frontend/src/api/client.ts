@@ -15,7 +15,10 @@ export function getApiBase(): string {
     const saved = localStorage.getItem(API_KEY);
     if (saved) return saved.replace(/\/$/, "");
   } catch { /* storage unavailable */ }
-  return (import.meta.env.VITE_API_BASE || DEFAULT_API).replace(/\/$/, "");
+  if (import.meta.env.VITE_API_BASE) return import.meta.env.VITE_API_BASE.replace(/\/$/, "");
+  // Opened through a public URL (ngrok etc.): use the same origin; the Vite server proxies /api.
+  if (!["localhost", "127.0.0.1"].includes(window.location.hostname)) return window.location.origin;
+  return DEFAULT_API;
 }
 
 export function setApiBase(value: string): void {
@@ -48,6 +51,9 @@ export function messageFor(status: number): string {
   }
 }
 
+/** Lets API calls pass ngrok's browser warning page on free tunnels. Harmless elsewhere. */
+export const TUNNEL_HEADERS = { "ngrok-skip-browser-warning": "1" };
+
 export const SESSION_EXPIRED_EVENT = "solarsleuth:session-expired";
 
 export async function apiFetch<T>(path: string, options: RequestInit & { timeoutMs?: number; auth?: boolean } = {}): Promise<T> {
@@ -57,7 +63,7 @@ export async function apiFetch<T>(path: string, options: RequestInit & { timeout
   try {
     response = await fetch(getApiBase() + path, {
       ...rest,
-      headers: { ...(rest.body && !(rest.body instanceof FormData) ? { "Content-Type": "application/json" } : {}),
+      headers: { ...TUNNEL_HEADERS, ...(rest.body && !(rest.body instanceof FormData) ? { "Content-Type": "application/json" } : {}),
                  ...(auth && token ? { Authorization: `Bearer ${token}` } : {}), ...headers },
       signal: rest.signal ?? AbortSignal.timeout(timeoutMs),
     });
