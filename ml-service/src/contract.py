@@ -15,7 +15,7 @@ from typing import Any
 
 from jsonschema import Draft202012Validator
 
-SCHEMA_VERSION = "2.0.0"
+SCHEMA_VERSION = "2.1.0"
 MODEL_VERSION = "1.0.0"
 MAPPING_VERSION = "1.0.0"
 
@@ -43,6 +43,7 @@ class ContractOutput:
     request: dict[str, Any] = field(default_factory=dict)
     interval: dict[str, Any] = field(default_factory=dict)
     energy: dict[str, Any] = field(default_factory=dict)
+    device_performance: list[dict[str, Any]] = field(default_factory=list)
     forecast_energy: float | None = None
     expected_energy: float | None = None
     actual_energy: float | None = None

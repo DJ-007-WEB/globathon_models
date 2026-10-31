@@ -1377,6 +1377,51 @@ def _waterfall(
     return result
 
 
+def _device_performance(
+    frame: pd.DataFrame,
+    *,
+    baseline_result: Mapping[str, Any],
+) -> list[dict[str, Any]]:
+    """Aggregate measured and baseline energy per device without mixing assets."""
+    if "device_id" not in frame.columns:
+        return []
+    expected_series = baseline_result.get("expected_energy_kwh")
+    if not isinstance(expected_series, pd.Series):
+        expected_series = pd.Series(np.nan, index=frame.index, dtype=float)
+    else:
+        expected_series = pd.to_numeric(expected_series.reindex(frame.index), errors="coerce")
+
+    if "energy_kwh" in frame.columns:
+        actual_series = pd.to_numeric(frame["energy_kwh"], errors="coerce")
+    elif "ac_power_kw" in frame.columns:
+        power = pd.to_numeric(frame["ac_power_kw"], errors="coerce")
+        seconds = baseline_result.get("interval_seconds")
+        if isinstance(seconds, pd.Series):
+            actual_series = power * pd.to_numeric(seconds.reindex(frame.index), errors="coerce") / 3600.0
+        else:
+            actual_series = pd.Series(np.nan, index=frame.index, dtype=float)
+    else:
+        actual_series = pd.Series(np.nan, index=frame.index, dtype=float)
+
+    result: list[dict[str, Any]] = []
+    for device, indices in frame.groupby(frame["device_id"].astype(str), sort=True).groups.items():
+        index = list(indices)
+        actual_values = actual_series.loc[index]
+        expected_values = expected_series.loc[index]
+        actual_total = _as_float(actual_values.sum(min_count=1))
+        expected_total = _as_float(expected_values.sum(min_count=1))
+        result.append(json_safe({
+            "device_id": str(device),
+            "row_count": len(index),
+            "actual_valid_rows": int(actual_values.notna().sum()),
+            "expected_valid_rows": int(expected_values.notna().sum()),
+            "actual_energy_kwh": actual_total,
+            "expected_energy_kwh": expected_total,
+            "deviation_kwh": actual_total - expected_total if actual_total is not None and expected_total is not None else None,
+        }))
+    return result
+
+
 def _transform_anomalies(alerts: list[dict[str, Any]]) -> list[dict[str, Any]]:
     results: list[dict[str, Any]] = []
     for alert in alerts:
@@ -1862,6 +1907,7 @@ def _analyze_bundle(
         baseline_result.get("expected_energy_kwh", pd.Series(dtype=float)),
         source="physics_baseline",
     )
+    device_performance = _device_performance(context, baseline_result=baseline_result)
     actual_component, actual_warnings = _actual_energy(
         context,
         interval_minutes=bundle.interval_minutes,
@@ -2005,6 +2051,7 @@ def _analyze_bundle(
         summary=summary,
         request=request,
         interval=interval,
+        device_performance=device_performance,
         energy={
             "forecast": forecast_component,
             "expected": expected_component,

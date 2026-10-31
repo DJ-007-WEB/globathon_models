@@ -11,7 +11,7 @@ def test_pipeline_smoke(tmp_path):
     generate_batch(input_dir, seed=7, n_scenarios=1, days=1, interval_minutes=60, capacity_kw=500.0)
     result = run_pipeline(input_dir / "scenario_000", output_path=output_path)
 
-    assert result["schema_version"] == "2.0.0"
+    assert result["schema_version"] == "2.1.0"
     assert result["analysis_status"] in {"success", "partial"}
     assert output_path.exists()
     assert result["waterfall"]["status"] in {"ok", "warning", "unavailable"}
@@ -74,6 +74,9 @@ def test_enriched_four_inverter_csv_runs_through_full_operating_pipeline(tmp_pat
         sum(row[4] for row in records), abs=1e-6
     )
     assert result["expected_energy"] is not None
+    assert [item["device_id"] for item in result["device_performance"]] == ["INV-01", "INV-02", "INV-03", "INV-04"]
+    assert sum(item["actual_energy_kwh"] for item in result["device_performance"]) == pytest.approx(result["actual_energy"], abs=1e-6)
+    assert all(item["expected_energy_kwh"] is not None for item in result["device_performance"])
     assert result["unresolved_fields"] == []
     assert any("marked synthetic" in item for item in result["limitations"])
 
