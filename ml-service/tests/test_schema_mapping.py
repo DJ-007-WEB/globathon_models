@@ -152,3 +152,55 @@ def test_wide_device_type_token_is_preserved(tmp_path):
     assert table.layout["layout_type"] == "wide"
     assert set(table.layout["devices"]) == {"inv-01", "inv-02"}
     assert mapping.role_to_columns["power_ac"] == ["INV-01 AC Power (kW)", "INV-02 AC Power (kW)"]
+
+def test_solar_sleuth_enriched_long_format_csv_headers_map_without_false_ambiguity(tmp_path):
+    table = _ingest(
+        tmp_path,
+        "scenario_id,synthetic,timestamp_utc,inverter_id,ac_power_kw,dc_power_kw,energy_kwh,"
+        "module_temperature_c,ambient_temperature_c,poa_irradiance_w_m2,rated_ac_power_kw,"
+        "rated_dc_power_kw,inverter_efficiency,dc_ac_ratio,module_temperature_coefficient_per_c,"
+        "system_losses_fraction,latitude_deg,longitude_deg,solar_elevation_deg,ghi_w_m2,"
+        "dni_w_m2,dhi_w_m2,cloud_cover_fraction\n"
+        "scenario_000,True,2024-01-01T06:45:00Z,INV-01,2.2,2.27,0.55,17,16,17,"
+        "125,150,0.97,1.2,-0.0035,0.12,30.09,7.38,2.67,17.2,0,17.2,0.64\n"
+        "scenario_000,True,2024-01-01T06:45:00Z,INV-02,2.3,2.37,0.575,17,16,17,"
+        "125,150,0.97,1.2,-0.0035,0.12,30.09,7.38,2.67,17.2,0,17.2,0.64\n"
+        "scenario_000,True,2024-01-01T07:00:00Z,INV-01,5.0,5.15,1.25,18,16,39,"
+        "125,150,0.97,1.2,-0.0035,0.12,30.09,7.38,5.49,38.4,146.9,23.5,0.67\n"
+        "scenario_000,True,2024-01-01T07:00:00Z,INV-02,5.1,5.25,1.275,18,16,39,"
+        "125,150,0.97,1.2,-0.0035,0.12,30.09,7.38,5.49,38.4,146.9,23.5,0.67\n",
+    )
+    mapping = map_table(table)
+    fields = {field["source_column"]: field for field in mapping.fields}
+
+    assert table.layout["layout_type"] == "long"
+    assert set(table.layout["devices"]) == {"INV-01", "INV-02"}
+    assert table.timestamp["status"] == "resolved"
+
+    expected = {
+        "scenario_id": "scenario_id",
+        "synthetic": "synthetic_flag",
+        "inverter_id": "device_id",
+        "ac_power_kw": "power_ac",
+        "dc_power_kw": "power_dc",
+        "energy_kwh": "energy_interval",
+        "rated_ac_power_kw": "capacity",
+        "rated_dc_power_kw": "dc_capacity",
+        "inverter_efficiency": "inverter_efficiency",
+        "dc_ac_ratio": "dc_ac_ratio",
+        "module_temperature_coefficient_per_c": "temperature_coefficient",
+        "system_losses_fraction": "system_losses",
+        "solar_elevation_deg": "sun_elevation",
+        "ghi_w_m2": "irradiance_ghi",
+        "dni_w_m2": "irradiance_dni",
+        "dhi_w_m2": "irradiance_dhi",
+        "cloud_cover_fraction": "cloud_cover",
+    }
+    for column, role in expected.items():
+        assert fields[column]["canonical_role"] == role, column
+        assert fields[column]["unresolved"] is False, column
+
+    assert mapping.role_to_columns["power_ac"] == ["ac_power_kw"]
+    assert mapping.role_to_columns["energy_interval"] == ["energy_kwh"]
+    assert mapping.role_to_columns["irradiance_dni"] == ["dni_w_m2"]
+    assert mapping.role_to_columns["irradiance_dhi"] == ["dhi_w_m2"]
