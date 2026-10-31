@@ -546,7 +546,6 @@ async def get_analysis_chat(request_id: str,
     ]}
 
 
-@app.post("/api/v1/analyses/{request_id}/chat")
 def _fallback_chat_answer(question: str, ml_result: dict, prior_explanation: dict | None = None) -> dict:
     """Answer from saved deterministic evidence when local LLM inference is unavailable."""
     question_text = question.strip().lower()
@@ -615,6 +614,7 @@ def _fallback_chat_answer(question: str, ml_result: dict, prior_explanation: dic
     }
 
 
+@app.post("/api/v1/analyses/{request_id}/chat")
 async def ask_about_analysis(request_id: str, payload: AnalysisChatPayload,
                              authorization: str | None = Header(None, alias="Authorization")) -> dict:
     account = _authorize_browser(authorization)
