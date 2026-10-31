@@ -43,6 +43,7 @@ class ContractOutput:
     request: dict[str, Any] = field(default_factory=dict)
     interval: dict[str, Any] = field(default_factory=dict)
     energy: dict[str, Any] = field(default_factory=dict)
+    device_performance: list[dict[str, Any]] = field(default_factory=list)
     forecast_energy: float | None = None
     expected_energy: float | None = None
     actual_energy: float | None = None
