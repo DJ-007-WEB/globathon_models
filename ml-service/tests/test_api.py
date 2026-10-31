@@ -207,3 +207,28 @@ def test_upload_enforces_row_column_and_decompression_limits(monkeypatch):
     assert wide.status_code == 413
     assert tall.status_code == 413
     assert expanded.status_code == 413
+
+
+def test_role_prefix_wins_over_words_in_the_uploaded_file_name(tmp_path):
+    from src.service import _classify_directory
+
+    for name in ("operating_weather_station_logger.csv", "weather_forecast_city.csv", "forecast_design.csv"):
+        (tmp_path / name).write_text("timestamp,value\n2026-01-01T00:00:00Z,1\n")
+    operating, optional, _ = _classify_directory(tmp_path)
+    assert operating.name == "operating_weather_station_logger.csv"
+    assert optional["weather"].name == "weather_forecast_city.csv"
+    assert optional["forecast"].name == "forecast_design.csv"
+
+
+def test_analysis_output_never_exposes_server_temp_paths():
+    import json
+
+    with TestClient(api.app) as client:
+        response = client.post(
+            "/api/v1/analyze",
+            files={"file": ("plant.csv", b"timestamp,ac_power_kw\n2026-01-01T10:00:00Z,1\n2026-01-01T10:15:00Z,2\n")},
+        )
+    text = json.dumps(response.json())
+    assert "solarsleuth-ml-" not in text and "/tmp/" not in text
+    assert "plant.csv" in response.json()["request"]["source_files"]
+    assert "operating_plant.csv" not in text

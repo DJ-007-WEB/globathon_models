@@ -401,7 +401,9 @@ def physics_baseline(
             poa = None
             irradiance_basis = None
             warnings.append(
-                "POA irradiance is unavailable and GHI proxy use is disabled; expected power is unavailable."
+                "POA irradiance is unavailable and GHI proxy use is disabled; expected power is unavailable. "
+                "Supply plane-of-array (POA/GTI) irradiance, or set baseline.allow_ghi_proxy: true to accept "
+                "a GHI-based estimate with an explicit warning."
             )
     else:
         poa = None

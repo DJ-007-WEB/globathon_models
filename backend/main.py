@@ -233,6 +233,18 @@ def _compact_ml_for_llm(result: dict) -> dict:
     devices = result.get("device_performance")
     if isinstance(devices, list):
         compact["device_performance"] = devices[:20]
+    runs = result.get("anomaly_runs")
+    if isinstance(runs, list) and runs:
+        # Alert periods (device, start, end, linked events) are the most useful
+        # anomaly evidence for an explanation and are far smaller than raw alerts.
+        compact["anomaly_runs"] = runs[:12]
+    roles = result.get("input_roles")
+    if isinstance(roles, list):
+        compact["input_roles"] = [
+            {key: item.get(key) for key in ("role", "status", "source_file", "sheet_name", "reason", "coverage")
+             if item.get(key) is not None}
+            for item in roles if isinstance(item, dict)
+        ]
     capabilities = result.get("capabilities")
     if isinstance(capabilities, dict):
         compact["capabilities"] = {
@@ -278,7 +290,7 @@ def _compact_ml_for_llm(result: dict) -> dict:
             {key: item.get(key) for key in ("timestamp_utc", "device_id", "status", "checks", "message")}
             | {"evidence": {key: value for key, value in (item.get("evidence") or {}).items()
                             if key in {"actual_power_kw", "expected_power_kw", "normalized_output"}}}
-            for item in anomalies[:6]
+            for item in anomalies[:(3 if compact.get("anomaly_runs") else 6)]
         ]
 
     hypotheses = [item for item in result.get("hypotheses") or [] if isinstance(item, dict)]
@@ -743,6 +755,10 @@ def _fallback_chat_answer(question: str, ml_result: dict, prior_explanation: dic
                            + ", ".join(f"{device} {count}" for device, count in ranked[:8]) + ".")
         messages = list(dict.fromkeys(str(item.get("message")) for item in anomalies if item.get("message")))
         anomaly_obs.extend(messages[:3])
+        for run in [item for item in ml_result.get("anomaly_runs") or [] if isinstance(item, dict)][:6]:
+            linked = f"; overlaps logged {', '.join(run['overlapping_events'])}" if run.get("overlapping_events") else ""
+            anomaly_obs.append(f"Alert period on {run.get('device_id')}: {run.get('start_utc')} to {run.get('end_utc')} "
+                               f"({run.get('intervals')} intervals){linked}.")
     else:
         anomaly_obs.append("The ML service raised no anomaly alerts for this dataset.")
     grouped: dict[str, set] = {}
@@ -762,6 +778,9 @@ def _fallback_chat_answer(question: str, ml_result: dict, prior_explanation: dic
     for check in quality.get("checks") or []:
         if isinstance(check, dict) and check.get("status") not in {"pass", "passed"}:
             quality_obs.append(f"{str(check.get('check_id', 'check')).replace('_', ' ')}: {check.get('status')} — {check.get('message', '')}")
+    for role in ml_result.get("input_roles") or []:
+        if isinstance(role, dict) and role.get("status") == "unavailable":
+            quality_obs.append(f"The {str(role.get('role', 'input')).replace('_', ' ')} input was not used: {role.get('reason')}")
     for key, label in (("missing_required_fields", "Missing required inputs"), ("unresolved_fields", "Unmapped columns")):
         values = ml_result.get(key)
         if isinstance(values, list) and values:
@@ -799,7 +818,15 @@ def _fallback_chat_answer(question: str, ml_result: dict, prior_explanation: dic
     if primary == "energy" and energy_values:
         summary = "Based on the saved ML report, " + "; ".join(energy_values) + "."
     elif primary == "devices" and device_obs:
-        summary = "Per-device results from the saved ML report, largest shortfall first: " + " ".join(device_obs[:3])
+        deviations = [item.get("deviation_kwh") for item in devices if isinstance(item.get("deviation_kwh"), (int, float))]
+        alerted = sorted({str(item.get("device_id")) for item in anomalies if item.get("device_id")})
+        alert_text = f" Alerts were raised for: {', '.join(alerted)}." if alerted else " No device alerts were raised."
+        if deviations and min(deviations) < 0:
+            summary = ("Per-device results from the saved ML report, largest shortfall first: "
+                       + " ".join(device_obs[:3]) + alert_text)
+        else:
+            summary = ("No device produced less than its expected energy over the analysed period; "
+                       "per-device results, smallest margin first: " + " ".join(device_obs[:3]) + alert_text)
     elif primary == "anomalies":
         summary = anomaly_obs[0] + (" Candidate explanations: " + "; ".join(grouped) + "." if grouped else
                                     " The report contains no supported cause hypothesis.")

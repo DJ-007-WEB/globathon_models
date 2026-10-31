@@ -68,6 +68,8 @@ class ContractOutput:
     model_status: str = "physics_baseline_active"
     errors: list[dict[str, Any]] = field(default_factory=list)
     column_mapping: list[dict[str, Any]] = field(default_factory=list)
+    input_roles: list[dict[str, Any]] = field(default_factory=list)
+    anomaly_runs: list[dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

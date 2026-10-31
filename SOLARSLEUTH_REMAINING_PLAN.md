@@ -363,3 +363,38 @@ The harness is committed under `scripts/e2e/`.
 - [ ] Evaluate real model output on healthy / underperforming / partial datasets (the grounding guard is tested with scripted output only).
 - [ ] Measure real CPU inference time against the 300 s timeout.
 - [ ] Confirm the deployment branch (no `production` branch exists) and add rate limiting before any public deployment.
+
+---
+
+## Execution log — 2026-10-31 (third pass: live-run defects and REQUIRED_CHANGES.md)
+
+### Live defects reported from the developer's machine
+
+- **"Authoritative ML evidence prompt is too large (8352 tokens; limit 7344)":** the backend sent ~53k characters of evidence, mostly raw validation-check details plus duplicated observations. It now sends an aggregated digest (core metrics unchanged; validation issues only; anomaly counts by device/check; alert periods; hypotheses grouped by label; input-role status). A 30-day, 4-inverter result is ~11k characters, and the worst-case chat prompt fits even at 1.6 characters per token. `MAX_INPUT_TOKENS` is configurable, and a final trim removes per-record detail before the service refuses.
+- **Chat gave the same answer to every question:** inference was failing (prompt size above), and the deterministic fallback only keyed on a few words. The fallback now routes by intent (energy, devices, anomalies, data quality, next checks). The LLM prompt puts the user's question first and requires a question-specific answer.
+
+### REQUIRED_CHANGES.md (ML raw-input ingestion)
+
+Implemented generically, without branches for specific files, sheets, devices or dates. A generated fixture with the same structure as the three raw files (`ml-service/tests/raw_fixtures.py`) reproduced the reported result (partial, snapshot, 2977 rows, 1 device, AMBIGUOUS_TIMESTAMP). It now gives **success, full mode, 2 devices, actual/expected/forecast available, a reconciled waterfall, weather 100% aligned, all 4 day-first events kept, and 16 alerts, all inside the logged INV2 trip** (before: 0, and 1,956 in the control run).
+
+| Item | Status |
+|---|---|
+| P0-1 units rows | ✅ penalized in header detection, skipped, kept as column units |
+| P0-2 date order | ✅ whole-column scan, units-row hint, `time.date_order` override; true ambiguity still rejected |
+| P0-3 forecast mapping | ✅ design/expected aliases; forecast words required; generic forecast resolved by unit; hourly interval kept |
+| P0-4 wide inverters | ✅ suffix devices, status per device, unit decides power vs energy; energy = power × duration |
+| P0-5 aliases | ✅ T_Amb, TArray, GTI/GHI variants (config only) |
+| P0-6 workbook sheets | ✅ content classification, key/value metadata (time zone, location), per-role sheet selection, used/ignored reported |
+| P0-7 events | ✅ shared date order + time zone, blank asset → PLANT, attribution null-safe, trips/faults/derates are outage events |
+| P0-8 CUSUM | ✅ signed decay, cap, reset after run or gap, alerts only on short intervals, separate `cumulative_shortfall` check |
+| P1-1 weather | ✅ nearest-time alignment within half a weather interval, coverage reported; actionable GHI-proxy reason |
+| P1-2 device sheet | ✅ DC kWp aliases, type columns not IDs, unrated rows excluded, label-tolerant join |
+| P1-3 role validation | ✅ new `input_roles` contract section (used / unavailable + reason / not supplied) |
+| P1-4 alert volume | ✅ event-attributed hypotheses survive the cap, truncation counts reported, new `anomaly_runs` section |
+
+Also fixed: the analysis output exposed the ML server's temporary upload path (`/tmp/solarsleuth-ml-…`) through `column_mapping`; file names are now base names without internal role prefixes. Uploaded file roles follow the API's role prefix rather than words in the file name.
+
+### Still requires the developer's environment
+
+- [ ] Re-run with the actual three raw files (only structurally equivalent fixtures were available here).
+- [ ] Re-check real Qwen output quality now that the prompt fits.

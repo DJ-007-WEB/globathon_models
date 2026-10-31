@@ -22,7 +22,13 @@ def _sun(local_times: pd.DatetimeIndex) -> np.ndarray:
     return np.clip(np.sin((hour - 7.0) / 11.2 * np.pi), 0.0, None)
 
 
-def write_raw_inputs(directory: Path, *, days: int = 31, seed: int = 11) -> dict[str, Path]:
+def write_raw_inputs(
+    directory: Path,
+    *,
+    days: int = 31,
+    seed: int = 11,
+    sheet_names: tuple[str, str, str, str] = ("Data", "Info", "Devices", "Events"),
+) -> dict[str, Path]:
     """Write a measured workbook, a weather CSV and a forecast CSV; return their paths."""
     directory.mkdir(parents=True, exist_ok=True)
     rng = np.random.default_rng(seed)
@@ -76,10 +82,12 @@ def write_raw_inputs(directory: Path, *, days: int = 31, seed: int = 11) -> dict
     })
     workbook = directory / "plant_measured_data_15min.xlsx"
     with pd.ExcelWriter(workbook) as writer:
-        data.to_excel(writer, sheet_name="Data", index=False)
-        info.to_excel(writer, sheet_name="Info", index=False)
-        devices.to_excel(writer, sheet_name="Devices", index=False)
-        events.to_excel(writer, sheet_name="Events", index=False)
+        data_sheet, info_sheet, devices_sheet, events_sheet = sheet_names
+        # Companion sheets come first on purpose: discovery must use content, not order.
+        events.to_excel(writer, sheet_name=events_sheet, index=False)
+        info.to_excel(writer, sheet_name=info_sheet, index=False)
+        data.to_excel(writer, sheet_name=data_sheet, index=False)
+        devices.to_excel(writer, sheet_name=devices_sheet, index=False)
 
     # --- weather: hourly at :30, units row, GHI only (no POA) ------------------------
     hourly = pd.date_range("2026-01-01 00:30", "2026-12-31 23:30", freq="1h")

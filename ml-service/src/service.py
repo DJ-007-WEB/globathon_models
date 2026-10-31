@@ -193,12 +193,21 @@ class InputBundle:
     timezone: str | None = None
     interval_minutes: float | None = None
     plant_id: str | None = None
+    input_roles: dict[str, dict[str, Any]] = field(default_factory=dict)
+
+
+_UPLOAD_ROLE_PREFIXES = ("event_log_", "operating_", "weather_", "devices_", "forecast_")
 
 
 def _safe_name(value: Any) -> str:
+    """Base file name only (never a server path), without the HTTP adapter's role prefix."""
     if value is None:
         return "<memory>"
-    return Path(str(value)).name or "<memory>"
+    name = Path(str(value)).name or "<memory>"
+    for prefix in _UPLOAD_ROLE_PREFIXES:
+        if name.startswith(prefix) and len(name) > len(prefix):
+            return name[len(prefix):]
+    return name
 
 
 def _as_float(value: Any) -> float | None:
@@ -552,9 +561,20 @@ def _classify_directory(directory: Path) -> tuple[Path, dict[str, Path], list[st
     ]
     operating: list[Path] = []
     optional: dict[str, list[Path]] = {"weather": [], "devices": [], "forecast": [], "event_log": []}
+    role_prefixes = (("operating_", None), ("weather_", "weather"), ("devices_", "devices"),
+                     ("forecast_", "forecast"), ("event_log_", "event_log"))
     for path in files:
         stem = path.stem.lower()
         if "ground_truth" in stem or stem in {"manifest", "metadata"}:
+            continue
+        # The HTTP adapter prefixes each upload with its role; that prefix is
+        # authoritative (an operating file may be named e.g. "weather_station_log").
+        prefixed = next((role for prefix, role in role_prefixes if stem.startswith(prefix)), "")
+        if prefixed != "":
+            if prefixed is None:
+                operating.append(path)
+            else:
+                optional[prefixed].append(path)
             continue
         if "forecast" in stem:
             optional["forecast"].append(path)
@@ -711,7 +731,7 @@ def _load_inputs(
             operating_path, optional_paths, directory_warnings = _classify_directory(path)
             warnings.extend(directory_warnings)
             values = {"operating": operating_path, **optional_paths}
-            source_files = [operating_path.name] + [item.name for item in optional_paths.values()]
+            source_files = [_safe_name(operating_path)] + [_safe_name(item) for item in optional_paths.values()]
         else:
             values = {"operating": path}
             source_files = [path.name]
@@ -855,6 +875,37 @@ def _load_inputs(
     if location:
         metadata.setdefault("location", location)
 
+    # Role-level status so an unusable optional input is reported, never hidden.
+    canonical_by_role = {"operating": operating, "weather": weather, "devices": devices, "forecast": forecast}
+    usable_roles = {
+        "weather": (set(WEATHER_ROLE_COLUMNS), "No GHI, POA, temperature or sun-elevation column could be mapped."),
+        "devices": ({"capacity", "dc_capacity"}, "No AC or DC rating column could be mapped."),
+        "forecast": ({"forecast_energy", "forecast_power"}, "No forecast energy or forecast AC power column could be mapped."),
+    }
+    input_roles: dict[str, dict[str, Any]] = {}
+    for role in ("operating", "weather", "devices", "forecast", "event_log"):
+        table = tables.get(role)
+        if table is None:
+            input_roles[role] = {"role": role, "status": "not_supplied", "source_file": None, "sheet_name": None,
+                                 "mapped_fields": 0, "unresolved_fields": [], "reason": None}
+            continue
+        entry = {"role": role, "status": "used", "source_file": _safe_name(table.source_file),
+                 "sheet_name": table.sheet_name, "mapped_fields": 0, "unresolved_fields": [], "reason": None}
+        canonical = canonical_by_role.get(role)
+        if canonical is not None:
+            fields = getattr(canonical.mapping, "fields", None) or []
+            mapped = {item.get("canonical_role") for item in fields if item.get("canonical_role") and not item.get("unresolved")}
+            entry["mapped_fields"] = len(mapped)
+            entry["unresolved_fields"] = [str(item.get("source_column")) for item in fields if item.get("unresolved")][:30]
+            if role in usable_roles and not (mapped & usable_roles[role][0]):
+                entry.update(status="unavailable", reason=usable_roles[role][1])
+        elif role == "event_log":
+            if event_log is None or event_log.empty:
+                entry.update(status="unavailable", reason="The event log has no parseable start/end times.")
+            else:
+                entry["mapped_fields"] = int(len(event_log))
+        input_roles[role] = entry
+
     return InputBundle(
         operating=operating,
         weather=weather,
@@ -868,6 +919,7 @@ def _load_inputs(
         timezone=resolved_timezone,
         interval_minutes=resolved_interval,
         plant_id=resolved_plant,
+        input_roles=input_roles,
     )
 
 
@@ -1276,9 +1328,40 @@ def _merge_context(
             missing = [column for column in weather_cols if column not in frame.columns]
             overlap = [column for column in weather_cols if column in frame.columns]
             selected = weather_frame[keys + missing + overlap].drop_duplicates(subset=keys, keep="first")
+            selected = selected.dropna(subset=["__merge_timestamp__"]).sort_values("__merge_timestamp__")
+            # Weather is often stamped differently (e.g. hourly at :30). Match each
+            # operating row to the nearest weather row within half a weather interval.
+            steps = selected["__merge_timestamp__"].drop_duplicates().diff().dt.total_seconds()
+            step = float(steps[steps > 0].median()) if (steps > 0).any() else None
+            tolerance = pd.Timedelta(seconds=step / 2.0) if step else pd.Timedelta(0)
             try:
-                merged = frame.merge(selected, on=keys, how="left", suffixes=("", "__weather"))
-            except (ValueError, KeyError) as exc:
+                left = frame.assign(__row__=np.arange(len(frame)))
+                valid = left["__merge_timestamp__"].notna()
+                matched = pd.merge_asof(
+                    left.loc[valid].sort_values("__merge_timestamp__"),
+                    selected.rename(columns={column: f"{column}__weather" for column in missing + overlap}),
+                    on="__merge_timestamp__",
+                    by="scenario_id" if "scenario_id" in keys else None,
+                    direction="nearest",
+                    tolerance=tolerance,
+                ).set_index("__row__")
+                merged = left.set_index("__row__")
+                for column in missing + overlap:
+                    merged[f"{column}__weather"] = matched[f"{column}__weather"].reindex(merged.index)
+                merged = merged.reset_index(drop=True)
+                for column in missing:
+                    merged[column] = merged[f"{column}__weather"]
+                weather_hit = merged[[f"{column}__weather" for column in missing + overlap]].notna().any(axis=1)
+                coverage = float(weather_hit.mean()) if len(weather_hit) else 0.0
+                rule = f"nearest weather row within {tolerance.total_seconds() / 60:g} min"
+                if coverage == 0.0:
+                    warnings.append(f"Weather timestamps did not overlap the operating data ({rule}); weather was not used.")
+                elif coverage < 0.95:
+                    warnings.append(f"Weather context covers {coverage:.0%} of operating rows ({rule}).")
+                else:
+                    warnings.append(f"Weather context aligned to {coverage:.0%} of operating rows ({rule}).")
+                frame.attrs["weather_coverage"] = coverage
+            except (ValueError, KeyError, TypeError) as exc:
                 warnings.append(f"Weather context could not be merged: {type(exc).__name__}.")
                 merged = frame
             for column in missing:
@@ -1769,15 +1852,69 @@ def _attribution(
             limitations.append(f"Attribution could not explain one interval: {type(exc).__name__}.")
             continue
         for hypothesis in explanation.get("causes", []):
-            if len(hypotheses) >= cap:
-                limitations.append(
-                    f"Hypotheses were capped at {cap}; additional alerts remain unexplained in this output."
-                )
-                return hypotheses, list(dict.fromkeys(evidence)), limitations
             hypotheses.append(json_safe(hypothesis))
-            evidence.extend(str(item) for item in hypothesis.get("evidence", []))
         limitations.extend(str(item) for item in explanation.get("notes", []))
+
+    if len(hypotheses) > cap:
+        # Keep every event-attributed hypothesis first so truncation never hides
+        # the alerts that a logged event explains; then the earliest others.
+        def event_backed(item: Mapping[str, Any]) -> bool:
+            return bool(item.get("event_confirmed")) or any("event_log" in str(text) for text in item.get("evidence") or [])
+
+        ranked = sorted(range(len(hypotheses)), key=lambda i: (not event_backed(hypotheses[i]), i))
+        kept = sorted(ranked[:cap])
+        event_count = sum(1 for item in hypotheses if event_backed(item))
+        limitations.append(
+            f"Hypotheses truncated: {cap} of {len(hypotheses)} shown "
+            f"({min(event_count, cap)} of {event_count} event-attributed hypotheses retained); "
+            "see anomaly_runs for every alert period."
+        )
+        hypotheses = [hypotheses[i] for i in kept]
+    for hypothesis in hypotheses:
+        evidence.extend(str(item) for item in hypothesis.get("evidence", []))
     return hypotheses, list(dict.fromkeys(evidence)), limitations
+
+
+def _anomaly_runs(
+    alerts: list[dict[str, Any]],
+    event_log: pd.DataFrame | None,
+    *,
+    interval_seconds: float | None,
+    limit: int = 200,
+) -> list[dict[str, Any]]:
+    """Aggregate per-interval alerts into contiguous runs per device."""
+    if not alerts:
+        return []
+    step = pd.Timedelta(seconds=(interval_seconds or 900.0) * 1.5)
+    frame = pd.DataFrame({
+        "device_id": [str(alert.get("device_id") or "plant") for alert in alerts],
+        "ts": pd.to_datetime([alert.get("timestamp_utc") for alert in alerts], errors="coerce", utc=True),
+        "checks": [tuple(alert.get("checks") or []) for alert in alerts],
+    }).dropna(subset=["ts"]).sort_values(["device_id", "ts"])
+    runs: list[dict[str, Any]] = []
+    for device, rows in frame.groupby("device_id", sort=True):
+        run_id = (rows["ts"].diff() > step).cumsum()
+        for _, run in rows.groupby(run_id):
+            start, end = run["ts"].iloc[0], run["ts"].iloc[-1]
+            events: list[str] = []
+            if event_log is not None and not event_log.empty:
+                overlapping = event_log.loc[
+                    (event_log["start_utc"] <= end) & (event_log["end_utc"] >= start)
+                    & event_log["asset_id"].astype(str).map(
+                        lambda asset: compact_text(asset) in {compact_text(device), "plant"}
+                    )
+                ]
+                events = [f"{row.event_type} ({row.asset_id})" for row in overlapping.itertuples()]
+            runs.append({
+                "device_id": device,
+                "start_utc": start.isoformat(),
+                "end_utc": end.isoformat(),
+                "intervals": int(len(run)),
+                "checks": sorted({check for checks in run["checks"] for check in checks}),
+                "overlapping_events": events,
+            })
+    runs.sort(key=lambda item: (item["start_utc"], item["device_id"]))
+    return runs[:limit]
 
 
 def _event_conflict_limitations(
@@ -1947,6 +2084,22 @@ def _conversion_text(conversion: Mapping[str, Any] | None) -> str | None:
     return f"{source} -> {target} ({rule})"
 
 
+def _final_input_roles(
+    bundle: InputBundle, context: pd.DataFrame, forecast_component: Mapping[str, Any]
+) -> list[dict[str, Any]]:
+    roles = {role: dict(entry) for role, entry in bundle.input_roles.items()}
+    weather = roles.get("weather")
+    coverage = context.attrs.get("weather_coverage")
+    if weather and weather["status"] == "used" and coverage is not None:
+        weather["coverage"] = round(float(coverage), 4)
+        if coverage == 0.0:
+            weather.update(status="unavailable", reason="Weather timestamps did not overlap the operating data.")
+    forecast = roles.get("forecast")
+    if forecast and forecast["status"] == "used" and forecast_component.get("value_kwh") is None:
+        forecast.update(status="unavailable", reason=str(forecast_component.get("reason") or "Forecast energy is unavailable."))
+    return [roles[name] for name in ("operating", "weather", "devices", "forecast", "event_log") if name in roles]
+
+
 def _column_mapping(bundle: InputBundle) -> list[dict[str, Any]]:
     """Expose the auditable mapping manifest for every supplied input table."""
 
@@ -1961,7 +2114,7 @@ def _column_mapping(bundle: InputBundle) -> list[dict[str, Any]]:
                         if warning and "no numeric values available" not in str(warning)]
             rows.append({
                 "input": name,
-                "source_file": item.get("source_file"),
+                "source_file": _safe_name(item.get("source_file")) if item.get("source_file") else None,
                 "sheet_name": item.get("sheet_name"),
                 "source_column": str(item.get("source_column")),
                 "canonical_role": item.get("canonical_role"),
@@ -2413,6 +2566,10 @@ def _analyze_bundle(
         model_status="physics_baseline_active",
         errors=errors,
         column_mapping=_column_mapping(bundle),
+        input_roles=_final_input_roles(bundle, context, forecast_component),
+        anomaly_runs=_anomaly_runs(
+            anomalies, bundle.event_log, interval_seconds=_as_float(interval.get("sampling_interval_seconds"))
+        ),
     ).to_dict()
     return json_safe(payload)
 

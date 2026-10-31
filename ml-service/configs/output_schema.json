@@ -890,6 +890,122 @@
           }
         }
       }
+    },
+    "input_roles": {
+      "type": "array",
+      "description": "Per-input status: used, unavailable (with reason) or not supplied.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "role",
+          "status",
+          "source_file",
+          "sheet_name",
+          "mapped_fields",
+          "unresolved_fields",
+          "reason"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "operating",
+              "weather",
+              "devices",
+              "forecast",
+              "event_log"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "used",
+              "unavailable",
+              "not_supplied"
+            ]
+          },
+          "source_file": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sheet_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "mapped_fields": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "unresolved_fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "coverage": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 1
+          }
+        }
+      }
+    },
+    "anomaly_runs": {
+      "type": "array",
+      "description": "Alerts aggregated into contiguous per-device periods.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "device_id",
+          "start_utc",
+          "end_utc",
+          "intervals",
+          "checks",
+          "overlapping_events"
+        ],
+        "properties": {
+          "device_id": {
+            "type": "string"
+          },
+          "start_utc": {
+            "type": "string"
+          },
+          "end_utc": {
+            "type": "string"
+          },
+          "intervals": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "checks": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "overlapping_events": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
     }
   },
   "$defs": {
