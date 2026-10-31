@@ -314,6 +314,64 @@ roles:
       - longitude
       - site longitude
 
+  scenario_id:
+    description: Identifier for a generated or grouped operating scenario; metadata only.
+    unit_family: null
+    aliases:
+      - scenario id
+      - scenario identifier
+      - scenario key
+
+  synthetic_flag:
+    description: Boolean marker indicating whether source records are synthetic.
+    unit_family: null
+    aliases:
+      - synthetic
+      - synthetic flag
+      - is synthetic
+      - synthetic data
+      - synthetic data flag
+
+  irradiance_dni:
+    description: Direct normal irradiance.
+    unit_family: irradiance
+    aliases:
+      - dni
+      - dni w m2
+      - dni irradiance
+      - dni irradiance w m2
+      - direct normal irradiance
+      - direct normal irradiance w m2
+
+  irradiance_dhi:
+    description: Diffuse horizontal irradiance.
+    unit_family: irradiance
+    aliases:
+      - dhi
+      - dhi w m2
+      - dhi irradiance
+      - dhi irradiance w m2
+      - diffuse horizontal irradiance
+      - diffuse horizontal irradiance w m2
+
+  cloud_cover:
+    description: Fraction of sky covered by cloud, represented as a fraction from zero to one.
+    unit_family: null
+    aliases:
+      - cloud cover
+      - cloud cover fraction
+      - cloud fraction
+      - cloudiness fraction
+
+  dc_ac_ratio:
+    description: Ratio of installed DC nameplate capacity to AC nameplate capacity.
+    unit_family: null
+    aliases:
+      - dc ac ratio
+      - dc to ac ratio
+      - dc/ac ratio
+      - dc ac sizing ratio
+
   forecast_energy:
     description: Forecast energy for one interval, not measured energy.
     unit_family: energy
