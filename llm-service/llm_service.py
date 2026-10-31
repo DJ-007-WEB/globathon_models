@@ -70,7 +70,7 @@ class LLMService:
         self.model = None
         self.last_load_error: str | None = None
         self.last_inference_error: str | None = None
-        self.max_input_tokens = 8192
+        self.max_input_tokens = 7600
         self.last_prompt_tokens: int | None = None
         self._load_lock = threading.Lock()
         self._generation_lock = threading.Lock()
