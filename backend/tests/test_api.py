@@ -550,3 +550,50 @@ def test_production_ready_does_not_relay_internal_llm_error_details(monkeypatch)
     assert body["status"] == "degraded"
     assert "raw output" not in body["llm_error"]
     assert body["llm_model_name"] is None
+
+
+def test_llm_digest_stays_bounded_and_keeps_core_metrics_for_long_datasets():
+    import json
+
+    checks = [{"check_id": f"check_{i}", "status": "pass" if i % 2 else "warning", "count": i,
+               "message": "m" * 50, "details": {"by_device": {f"INV-{j}": list(range(50)) for j in range(20)}}}
+              for i in range(30)]
+    ml = {
+        "analysis_status": "partial", "summary": "s",
+        "energy": {"actual": {"value_kwh": 152696.033512}, "expected": {"value_kwh": 169160.61106}},
+        "expected_deviation_kwh": -16464.577548,
+        "device_performance": [{"device_id": f"INV-{i}", "deviation_kwh": -i} for i in range(4)],
+        "data_quality": {"status": "warning", "rows": 11520, "checks": checks},
+        "anomalies": [{"timestamp_utc": f"2026-09-{1 + i % 30:02d}T10:00:00+00:00", "device_id": "INV-03",
+                       "checks": ["residual_shortfall"], "message": "Sustained shortfall.",
+                       "evidence": {"actual_power_kw": 1.0, "expected_power_kw": 2.0, "peer_mad": 0.1}}
+                      for i in range(1500)],
+        "hypotheses": [{"label": "Peer underperformance", "interval": {"device_id": "INV-03"},
+                        "evidence": ["e"] * 5, "confidence": 0.6} for _ in range(500)],
+        "evidence": ["peer median normalized output=0.951"] * 600,
+    }
+    digest = main._compact_ml_for_llm(ml)
+    assert len(json.dumps(digest)) < 12000
+    assert digest["energy"] == ml["energy"]
+    assert digest["expected_deviation_kwh"] == ml["expected_deviation_kwh"]
+    assert digest["anomaly_summary"]["total_alerts"] == 1500
+    assert digest["hypotheses"][0]["count"] == 500
+    assert all(issue["status"] != "pass" for issue in digest["data_quality"]["issues"])
+
+
+def test_deterministic_fallback_gives_different_answers_for_different_questions():
+    ml = {
+        "summary": "Full analysis covered 96 rows.",
+        "energy": {"actual": {"value_kwh": 30.0}, "expected": {"value_kwh": 40.0}},
+        "device_performance": [{"device_id": "INV-02", "actual_energy_kwh": 10.0, "expected_energy_kwh": 19.0, "deviation_kwh": -9.0}],
+        "data_quality": {"status": "warning", "rows": 96,
+                         "checks": [{"check_id": "time_gaps", "status": "warning", "message": "Found 2 gaps."}]},
+        "anomalies": [{"device_id": "INV-02", "message": "Sustained shortfall.", "timestamp_utc": "2026-03-04T05:00:00+00:00"}],
+        "hypotheses": [{"label": "Peer underperformance", "interval": {"device_id": "INV-02"}}],
+    }
+    questions = ["How much energy was produced?", "Which inverter underperformed?",
+                 "What anomalies were found?", "What should I check first?", "Can I trust this data?"]
+    summaries = [main._fallback_chat_answer(question, ml)["summary"] for question in questions]
+    assert len(set(summaries)) == len(questions)
+    assert "Found 2 gaps." in summaries[4]
+    assert "INV-02" in summaries[3]

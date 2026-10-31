@@ -381,3 +381,13 @@ def test_truncated_json_never_treats_array_values_as_keys():
     assert LLMService._extract_json('{"summary": "S", "observations": ["x", "y"') == {
         "summary": "S", "observations": ["x", "y"]}
     assert LLMService._extract_json('{"summary": "S", "limit') == {"summary": "S"}
+
+
+def test_prompt_puts_follow_up_question_before_evidence():
+    from llm_service import LLMService
+    from schemas import AnalysisRequest
+
+    request = AnalysisRequest(plant_id="p", plant_context={"user_question": "Which inverter underperformed?"},
+                              observations={"analysis_status": "partial"}, ml_results={"actual_energy": 1.0})
+    payload = LLMService._build_user_payload(request)
+    assert payload.startswith('{"question_to_answer":"Which inverter underperformed?"')

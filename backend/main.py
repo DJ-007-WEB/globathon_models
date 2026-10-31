@@ -213,31 +213,100 @@ def _validate_file_signature(filename: str, content: bytes) -> None:
 
 
 def _compact_ml_for_llm(result: dict) -> dict:
-    """Bound the prompt; preserve the full, unchanged ML result for the UI."""
+    """Build a bounded evidence digest for the LLM.
+
+    Core metrics are copied unchanged. Long per-interval lists (validation checks,
+    anomalies, hypotheses) are summarized into counts plus a few representative
+    records, so a 30-day dataset fits the local model's context window. The full,
+    unchanged ML result is still returned to the browser and persisted.
+    """
     compact = {
         key: result[key]
         for key in (
             "schema_version", "analysis_status", "analysis_mode", "summary", "request",
-            "interval", "energy", "device_performance", "forecast_energy", "expected_energy", "actual_energy",
-            "deviation", "expected_deviation", "expected_deviation_kwh", "waterfall", "data_quality", "capabilities", "units",
-            "model_version", "mapping_version", "config_version", "vocab_version",
+            "interval", "energy", "forecast_energy", "expected_energy", "actual_energy",
+            "deviation", "expected_deviation", "expected_deviation_kwh", "waterfall", "units",
             "method", "model_status",
         )
         if key in result
     }
-    for key, limit in (
-        ("device_performance", 20), ("anomalies", 12), ("hypotheses", 12), ("evidence", 30),
-        ("limitations", 30), ("unresolved_fields", 30),
-        ("missing_required_fields", 30), ("errors", 10),
-    ):
+    devices = result.get("device_performance")
+    if isinstance(devices, list):
+        compact["device_performance"] = devices[:20]
+    capabilities = result.get("capabilities")
+    if isinstance(capabilities, dict):
+        compact["capabilities"] = {
+            name: (value.get("status") if value.get("status") == "available" else
+                   f"{value.get('status')}: {value.get('reason')}")
+            for name, value in capabilities.items() if isinstance(value, dict)
+        }
+
+    quality = result.get("data_quality")
+    if isinstance(quality, dict):
+        checks = [item for item in quality.get("checks") or [] if isinstance(item, dict)]
+        compact["data_quality"] = {
+            "status": quality.get("status"),
+            "rows": quality.get("rows"),
+            "counts": quality.get("counts"),
+            # Passed checks are summarized by count; only issues are described.
+            "issues": [
+                {"check": item.get("check_id"), "status": item.get("status"),
+                 "count": item.get("count"), "message": str(item.get("message") or "")[:240],
+                 "affected_devices": (item.get("affected_devices") or [])[:6]}
+                for item in checks if item.get("status") not in {"pass", "passed"}
+            ][:12],
+        }
+
+    anomalies = [item for item in result.get("anomalies") or [] if isinstance(item, dict)]
+    if anomalies:
+        by_device: dict[str, int] = {}
+        by_check: dict[str, int] = {}
+        for item in anomalies:
+            device = str(item.get("device_id") or "plant")
+            by_device[device] = by_device.get(device, 0) + 1
+            for check in item.get("checks") or []:
+                by_check[str(check)] = by_check.get(str(check), 0) + 1
+        times = sorted(str(item.get("timestamp_utc")) for item in anomalies if item.get("timestamp_utc"))
+        compact["anomaly_summary"] = {
+            "total_alerts": len(anomalies),
+            "alerts_by_device": by_device,
+            "alerts_by_check": by_check,
+            "first_alert_utc": times[0] if times else None,
+            "last_alert_utc": times[-1] if times else None,
+        }
+        compact["anomalies"] = [
+            {key: item.get(key) for key in ("timestamp_utc", "device_id", "status", "checks", "message")}
+            | {"evidence": {key: value for key, value in (item.get("evidence") or {}).items()
+                            if key in {"actual_power_kw", "expected_power_kw", "normalized_output"}}}
+            for item in anomalies[:6]
+        ]
+
+    hypotheses = [item for item in result.get("hypotheses") or [] if isinstance(item, dict)]
+    if hypotheses:
+        grouped: dict[str, dict] = {}
+        for item in hypotheses:
+            label = str(item.get("label") or item.get("cause") or "unresolved")
+            entry = grouped.setdefault(label, {"label": label, "count": 0, "devices": [],
+                                               "status": item.get("status"),
+                                               "root_cause_confirmed": False, "max_confidence": None,
+                                               "example_evidence": item.get("evidence", [])[:3],
+                                               "missing_evidence": item.get("missing_evidence", [])[:2]})
+            entry["count"] += 1
+            device = (item.get("interval") or {}).get("device_id")
+            if device and device not in entry["devices"] and len(entry["devices"]) < 8:
+                entry["devices"].append(device)
+            entry["root_cause_confirmed"] = entry["root_cause_confirmed"] or bool(item.get("root_cause_confirmed"))
+            confidence = item.get("confidence")
+            if isinstance(confidence, (int, float)) and (entry["max_confidence"] is None or confidence > entry["max_confidence"]):
+                entry["max_confidence"] = confidence
+        compact["hypotheses"] = sorted(grouped.values(), key=lambda entry: -entry["count"])[:8]
+
+    for key, limit in (("evidence", 15), ("limitations", 15), ("unresolved_fields", 20),
+                       ("missing_required_fields", 20), ("errors", 5)):
         value = result.get(key)
         if isinstance(value, list):
-            compact[key] = value[:limit]
-    quality = compact.get("data_quality")
-    if isinstance(quality, dict) and isinstance(quality.get("checks"), list):
-        quality = dict(quality)
-        quality["checks"] = quality["checks"][:30]
-        compact["data_quality"] = quality
+            compact[key] = list(dict.fromkeys(str(item) if not isinstance(item, dict) else json.dumps(item)
+                                              for item in value))[:limit] if key != "errors" else value[:limit]
     return compact
 
 
@@ -593,65 +662,155 @@ def _unavailable_llm_explanation(ml_result: dict) -> dict:
     }
 
 
+_FALLBACK_INTENTS = (
+    ("devices", ("inverter", "device", "which", "worst", "best", "underperform", "string", "unit")),
+    ("energy", ("energy", "forecast", "expected", "deviation", "generation", "kwh", "loss", "waterfall",
+                "output", "performance", "produce", "below", "above")),
+    ("anomalies", ("anomal", "alert", "fault", "issue", "problem", "cause", "reason", "wrong")),
+    ("actions", ("check", "recommend", "should", "next", "action", "fix", "inspect", "do ", "priority", "first")),
+    ("quality", ("quality", "missing", "valid", "gap", "trust", "reliable", "limit", "unknown", "column", "mapping")),
+)
+
+
+def _fallback_intents(question: str) -> list[str]:
+    text = question.lower()
+    found = [name for name, terms in _FALLBACK_INTENTS if any(term in text for term in terms)]
+    return found or ["overview"]
+
+
 def _fallback_chat_answer(question: str, ml_result: dict, prior_explanation: dict | None = None) -> dict:
-    """Answer from saved deterministic evidence when local LLM inference is unavailable."""
-    question_text = question.strip().lower()
+    """Answer from saved deterministic evidence when local LLM inference is unavailable.
+
+    The answer is routed by what the question asks about (energy, devices, anomalies,
+    data quality or next checks) and quotes ML values exactly; nothing is inferred.
+    """
+    intents = _fallback_intents(question)
     energy = ml_result.get("energy") if isinstance(ml_result.get("energy"), dict) else {}
-    observations: list[str] = []
     limitations: list[str] = [
         "The local language model was unavailable; this response is assembled from the saved deterministic ML report."
     ]
+    sections: dict[str, list[str]] = {}
 
-    labels = (("forecast", "Forecast energy"), ("expected", "Expected energy"),
-              ("actual", "Measured actual energy"), ("deviation", "Actual minus forecast"))
-    energy_values = []
-    for key, label in labels:
+    # Energy facts.
+    energy_obs: list[str] = []
+    energy_values: list[str] = []
+    for key, label in (("forecast", "Forecast energy"), ("expected", "Expected energy"),
+                       ("actual", "Measured actual energy"), ("deviation", "Actual minus forecast")):
         component = energy.get(key) if isinstance(energy.get(key), dict) else {}
-        value = component.get("value_kwh")
-        reason = component.get("reason")
+        value, reason = component.get("value_kwh"), component.get("reason")
         if value is not None:
-            observations.append(f"{label}: {value} kWh.")
+            energy_obs.append(f"{label}: {value} kWh.")
             energy_values.append(f"{label.lower()} is {value} kWh")
         elif reason:
-            observations.append(f"{label} is unavailable: {reason}")
+            energy_obs.append(f"{label} is unavailable: {reason}")
             limitations.append(f"{label}: {reason}")
-
     expected_deviation = ml_result.get("expected_deviation")
     if isinstance(expected_deviation, dict) and expected_deviation.get("value_kwh") is not None:
         value = expected_deviation["value_kwh"]
-        observations.append(f"Measured minus expected energy: {value} kWh.")
+        energy_obs.append(f"Measured minus expected energy: {value} kWh.")
         energy_values.append(f"measured minus expected energy is {value} kWh")
+    waterfall = ml_result.get("waterfall") if isinstance(ml_result.get("waterfall"), dict) else {}
+    if waterfall.get("status") == "unavailable" and waterfall.get("reason"):
+        energy_obs.append(f"Energy waterfall unavailable: {waterfall['reason']}")
+    sections["energy"] = energy_obs
 
-    devices = ml_result.get("device_performance") if isinstance(ml_result.get("device_performance"), list) else []
-    if any(term in question_text for term in ("inverter", "device", "underperform", "which")):
-        for item in devices[:12]:
-            if not isinstance(item, dict) or not item.get("device_id"):
-                continue
-            parts = [f"{label} {item[key]} kWh" for key, label in (
-                ("actual_energy_kwh", "measured"), ("expected_energy_kwh", "expected"),
-                ("deviation_kwh", "measured minus expected"),
-            ) if item.get(key) is not None]
-            if parts:
-                observations.append(f"Device {item['device_id']}: " + ", ".join(parts) + ".")
+    # Device facts, worst shortfall first.
+    devices = [item for item in ml_result.get("device_performance") or []
+               if isinstance(item, dict) and item.get("device_id")]
+    devices.sort(key=lambda item: item["deviation_kwh"] if isinstance(item.get("deviation_kwh"), (int, float)) else 0)
+    device_obs = []
+    for item in devices[:12]:
+        parts = [f"{label} {item[key]} kWh" for key, label in (
+            ("actual_energy_kwh", "measured"), ("expected_energy_kwh", "expected"),
+            ("deviation_kwh", "measured minus expected"),
+        ) if item.get(key) is not None]
+        if parts:
+            device_obs.append(f"Device {item['device_id']}: " + ", ".join(parts) + ".")
+    plant_deviation = [item for item in energy_obs if item.startswith("Measured minus expected")]
+    sections["devices"] = plant_deviation + device_obs
 
-    anomalies = ml_result.get("anomalies") if isinstance(ml_result.get("anomalies"), list) else []
-    hypotheses = ml_result.get("hypotheses") if isinstance(ml_result.get("hypotheses"), list) else []
-    supported_causes = [str(item.get("summary") or item.get("hypothesis") or item.get("message"))
-                        for item in hypotheses if isinstance(item, dict)
-                        and (item.get("summary") or item.get("hypothesis") or item.get("message"))]
-    if any(term in question_text for term in ("anomal", "inverter", "fault", "device", "underperform")):
-        for item in anomalies[:8]:
-            if isinstance(item, dict) and item.get("message"):
-                observations.append(str(item["message"]))
-        for item in hypotheses[:8]:
-            if isinstance(item, dict):
-                text = item.get("summary") or item.get("hypothesis") or item.get("message")
-                if text:
-                    observations.append(f"Candidate explanation (not a confirmed cause): {text}")
-    elif not observations:
-        summary = ml_result.get("summary")
-        if isinstance(summary, str) and summary.strip():
-            observations.append(summary.strip())
+    # Anomalies and hypotheses, aggregated.
+    anomalies = [item for item in ml_result.get("anomalies") or [] if isinstance(item, dict)]
+    hypotheses = [item for item in ml_result.get("hypotheses") or [] if isinstance(item, dict)]
+    anomaly_obs = []
+    if anomalies:
+        by_device: dict[str, int] = {}
+        for item in anomalies:
+            device = str(item.get("device_id") or "plant")
+            by_device[device] = by_device.get(device, 0) + 1
+        ranked = sorted(by_device.items(), key=lambda pair: -pair[1])
+        anomaly_obs.append(f"The ML service raised {len(anomalies)} alert(s): "
+                           + ", ".join(f"{device} {count}" for device, count in ranked[:8]) + ".")
+        messages = list(dict.fromkeys(str(item.get("message")) for item in anomalies if item.get("message")))
+        anomaly_obs.extend(messages[:3])
+    else:
+        anomaly_obs.append("The ML service raised no anomaly alerts for this dataset.")
+    grouped: dict[str, set] = {}
+    for item in hypotheses:
+        label = str(item.get("label") or item.get("summary") or item.get("hypothesis") or item.get("cause") or "")
+        if label:
+            grouped.setdefault(label, set()).add(str((item.get("interval") or {}).get("device_id") or "plant"))
+    supported_causes = [
+        f"{label} (devices: {', '.join(sorted(found)[:6])}) — a hypothesis, not a confirmed cause."
+        for label, found in grouped.items()
+    ][:8]
+    sections["anomalies"] = anomaly_obs
+
+    # Data quality.
+    quality = ml_result.get("data_quality") if isinstance(ml_result.get("data_quality"), dict) else {}
+    quality_obs = [f"Data quality status: {quality.get('status', 'not reported')} over {quality.get('rows', 'an unknown number of')} rows."]
+    for check in quality.get("checks") or []:
+        if isinstance(check, dict) and check.get("status") not in {"pass", "passed"}:
+            quality_obs.append(f"{str(check.get('check_id', 'check')).replace('_', ' ')}: {check.get('status')} — {check.get('message', '')}")
+    for key, label in (("missing_required_fields", "Missing required inputs"), ("unresolved_fields", "Unmapped columns")):
+        values = ml_result.get(key)
+        if isinstance(values, list) and values:
+            quality_obs.append(f"{label}: {', '.join(str(item) for item in values[:12])}.")
+    sections["quality"] = quality_obs[:10]
+
+    # Next checks, derived from the evidence rather than generic advice.
+    actions = []
+    if devices and isinstance(devices[0].get("deviation_kwh"), (int, float)) and devices[0]["deviation_kwh"] < 0:
+        worst = devices[0]
+        actions.append(f"Start with device {worst['device_id']}, which has the largest shortfall "
+                       f"({worst['deviation_kwh']} kWh measured minus expected): review its alarms, availability and maintenance log.")
+    if anomalies:
+        first = min((str(item.get("timestamp_utc")) for item in anomalies if item.get("timestamp_utc")), default=None)
+        if first:
+            actions.append(f"Compare site and inverter logs with the alert period starting {first}.")
+    if energy.get("forecast", {}).get("value_kwh") is None if isinstance(energy.get("forecast"), dict) else True:
+        actions.append("Upload a design forecast file to enable the forecast-versus-actual waterfall.")
+    if ml_result.get("missing_required_fields"):
+        actions.append("Add the missing required inputs listed in the data-quality section and re-run the analysis.")
+    prior_checks = (prior_explanation or {}).get("recommended_checks", [])
+    if isinstance(prior_checks, list):
+        actions.extend(str(item) for item in prior_checks[:4] if item)
+    sections["actions"] = list(dict.fromkeys(actions))
+
+    summary_text = ml_result.get("summary") if isinstance(ml_result.get("summary"), str) else ""
+    sections["overview"] = ([summary_text.strip()] if summary_text.strip() else []) + energy_obs[:3]
+
+    observations: list[str] = []
+    for intent in intents:
+        observations.extend(sections.get(intent, []))
+    observations = list(dict.fromkeys(observations))
+
+    primary = intents[0]
+    if primary == "energy" and energy_values:
+        summary = "Based on the saved ML report, " + "; ".join(energy_values) + "."
+    elif primary == "devices" and device_obs:
+        summary = "Per-device results from the saved ML report, largest shortfall first: " + " ".join(device_obs[:3])
+    elif primary == "anomalies":
+        summary = anomaly_obs[0] + (" Candidate explanations: " + "; ".join(grouped) + "." if grouped else
+                                    " The report contains no supported cause hypothesis.")
+    elif primary == "quality":
+        summary = " ".join(quality_obs[:3])
+    elif primary == "actions" and sections["actions"]:
+        summary = "Suggested next checks based on the saved evidence: " + sections["actions"][0]
+    elif observations:
+        summary = "Based on the saved deterministic analysis: " + " ".join(observations[:3])
+    else:
+        summary = "The saved analysis is available, but it does not contain enough evidence to answer this question reliably."
 
     if not anomalies and not hypotheses:
         limitations.append("The saved report does not contain a supported anomaly or root-cause hypothesis.")
@@ -659,23 +818,14 @@ def _fallback_chat_answer(question: str, ml_result: dict, prior_explanation: dic
     if isinstance(existing_limitations, list):
         limitations.extend(str(item) for item in existing_limitations[:8] if item)
 
-    if energy_values and any(term in question_text for term in ("forecast", "waterfall", "deviation", "energy", "generation")):
-        summary = "Based on the saved ML report, " + "; ".join(energy_values) + "."
-    elif observations:
-        summary = "Based on the saved deterministic analysis: " + " ".join(observations[:3])
-    else:
-        summary = "The saved analysis is available, but it does not contain enough evidence to answer this question reliably."
-
-    prior_checks = (prior_explanation or {}).get("recommended_checks", [])
-    checks = [str(item) for item in prior_checks[:6] if item] if isinstance(prior_checks, list) else []
     return {
-        "summary": summary,
+        "summary": summary[:12000],
         "observations": observations[:20],
-        "possible_causes": supported_causes[:8],
-        "supporting_evidence": [str(item) for item in (ml_result.get("evidence") or [])[:8]],
-        "recommended_checks": checks,
+        "possible_causes": supported_causes if primary in {"anomalies", "devices", "overview"} else [],
+        "supporting_evidence": list(dict.fromkeys(str(item) for item in (ml_result.get("evidence") or [])))[:8],
+        "recommended_checks": sections["actions"][:6],
         "limitations": list(dict.fromkeys(limitations))[:12],
-        "confidence": "moderate" if supported_causes else "insufficient_evidence",
+        "confidence": "moderate" if supported_causes and primary in {"anomalies", "devices"} else "insufficient_evidence",
     }
 
 
@@ -703,10 +853,15 @@ async def ask_about_analysis(request_id: str, payload: AnalysisChatPayload = Bod
     ml_result = saved.get("ml_analysis")
     if not isinstance(ml_result, dict):
         raise HTTPException(status_code=422, detail="This saved report has no deterministic ML evidence for follow-up.")
-    context = [
-        f"{item['role'].upper()}: {str(item['content'])[:2000]}"
-        for item in reversed(history)
-    ]
+    def _turn_text(item: dict) -> str:
+        content = item.get("content")
+        # Earlier assistant answers are stored structured; their summary is enough context.
+        if isinstance(content, dict):
+            content = content.get("summary") or ""
+        return f"{str(item.get('role', '')).upper()}: {str(content)[:400]}"
+
+    context = [_turn_text(item) for item in reversed(history)]
+    prior = saved.get("analysis") if isinstance(saved.get("analysis"), dict) else {}
     llm_payload = {
         "request_id": request_id,
         "plant_id": document.get("plant_id", "unknown-plant"),
@@ -719,13 +874,10 @@ async def ask_about_analysis(request_id: str, payload: AnalysisChatPayload = Bod
         "observations": {
             "analysis_status": ml_result.get("analysis_status"),
             "summary": ml_result.get("summary"),
-            "data_quality": ml_result.get("data_quality", {}),
-            "limitations": ml_result.get("limitations", []),
-            "unresolved_fields": ml_result.get("unresolved_fields", []),
-            "prior_explanation": saved.get("analysis", {}),
+            "prior_explanation_summary": str(prior.get("summary") or "")[:600],
         },
         "ml_results": _compact_ml_for_llm(ml_result),
-        "retrieved_context": context[-8:],
+        "retrieved_context": context[-6:],
     }
     model_name = "local-llm"
     try:
@@ -974,13 +1126,11 @@ async def analyze_upload(
                 "analysis_mode": ml_result.get("analysis_mode"),
                 "user_question": "Explain the deterministic ML analysis. Do not recalculate or change its metrics.",
             },
+            # ml_results already carries interval, data quality, limitations and
+            # unresolved fields in digest form; repeating them would only grow the prompt.
             "observations": {
                 "analysis_status": ml_result.get("analysis_status"),
                 "summary": ml_result.get("summary"),
-                "interval": ml_result.get("interval", {}),
-                "data_quality": ml_result.get("data_quality", {}),
-                "limitations": ml_result.get("limitations", []),
-                "unresolved_fields": ml_result.get("unresolved_fields", []),
             },
             "ml_results": _compact_ml_for_llm(ml_result),
             "retrieved_context": [],

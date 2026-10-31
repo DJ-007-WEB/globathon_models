@@ -19,6 +19,8 @@ ADAPTER_PATH = os.getenv("ADAPTER_PATH", "models/solar-qwen-lora-final")
 ENVIRONMENT = os.getenv("ENVIRONMENT", "development").lower()
 SERVICE_TOKEN = os.getenv("INTERNAL_SERVICE_TOKEN")
 MAX_NEW_TOKENS = max(128, min(int(os.getenv("MAX_NEW_TOKENS", "700")), 1024))
+# Prompt budget; raise only if the model's context window and hardware allow it.
+MAX_INPUT_TOKENS = max(2048, min(int(os.getenv("MAX_INPUT_TOKENS", "7600")), 32768))
 
 
 WARMUP_ON_STARTUP = os.getenv("LLM_WARMUP_ON_STARTUP", "").strip().lower() in {"1", "true", "yes", "on"}
@@ -32,6 +34,7 @@ async def lifespan(app: FastAPI):
         model_name=MODEL_NAME,
         adapter_path=ADAPTER_PATH,
         max_new_tokens=MAX_NEW_TOKENS,
+        max_input_tokens=MAX_INPUT_TOKENS,
     )
     # Warm the model before serving production traffic. Local demo users can
     # opt in without making lightweight development/test startup expensive.

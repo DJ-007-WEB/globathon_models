@@ -48,7 +48,7 @@ GOOD OUTPUT EXAMPLES (illustrative wording only; never copy their numbers into a
 - Bad cause: "The inverter is faulty" when the ML result only contains an unconfirmed hypothesis.
 
 ANSWERING A FOLLOW-UP QUESTION
-- When plant_context.user_question is present, the summary must answer that question directly in its first sentence, using only the supplied evidence.
+- When question_to_answer is present, the summary must answer that specific question directly in its first sentence, using only the supplied evidence. Different questions need different answers: focus observations and checks on what was asked.
 - If the evidence cannot answer the question, say so plainly and name the missing data instead of guessing.
 - retrieved_context contains earlier turns of the conversation; stay consistent with them unless the ML evidence contradicts them.
 
@@ -70,7 +70,8 @@ No Markdown or text outside the JSON object."""
 class LLMService:
     """Loads the adapter's declared base model once, on first inference."""
 
-    def __init__(self, model_name: str | None, adapter_path: str, max_new_tokens: int = 450):
+    def __init__(self, model_name: str | None, adapter_path: str, max_new_tokens: int = 450,
+                 max_input_tokens: int = 7600):
         self.model_name = model_name
         self.resolved_model_name = model_name
         self.adapter_path = Path(adapter_path)
@@ -79,7 +80,7 @@ class LLMService:
         self.model = None
         self.last_load_error: str | None = None
         self.last_inference_error: str | None = None
-        self.max_input_tokens = 7600
+        self.max_input_tokens = max_input_tokens
         self.last_prompt_tokens: int | None = None
         self.last_raw_output: str | None = None
         self._load_lock = threading.Lock()
@@ -157,7 +158,11 @@ class LLMService:
     def _build_user_payload(request: AnalysisRequest) -> str:
         # Put the authoritative ML contract first. This matters for causal LM
         # tokenizers, which otherwise may truncate the tail of long prompts.
+        question = request.plant_context.get("user_question") if isinstance(request.plant_context, dict) else None
         payload: dict[str, Any] = {
+            # The question goes first so a small model reads what it must answer
+            # before the evidence block.
+            "question_to_answer": question,
             "plant_id": request.plant_id,
             "timestamp": request.timestamp,
             "plant_context": request.plant_context,
@@ -241,6 +246,27 @@ class LLMService:
             quality = ml.get("data_quality")
             if isinstance(quality, dict):
                 quality["checks"] = quality.get("checks", [])[:6]
+        prompt_text, token_count = render()
+        if token_count <= max_prompt_tokens:
+            return prompt_text, token_count
+
+        # Last resort: drop per-record detail but keep every core metric, the
+        # energy components, waterfall, device totals and aggregated summaries.
+        if isinstance(ml, dict):
+            for key in ("anomalies", "evidence", "errors", "column_mapping"):
+                ml.pop(key, None)
+            for item in ml.get("hypotheses") or []:
+                if isinstance(item, dict):
+                    item.pop("example_evidence", None)
+                    item.pop("evidence", None)
+            quality = ml.get("data_quality")
+            if isinstance(quality, dict):
+                quality.pop("checks", None)
+                quality["issues"] = (quality.get("issues") or [])[:4]
+        payload["observations"] = {
+            key: value for key, value in (payload.get("observations") or {}).items()
+            if key in ("analysis_status", "summary")
+        }
         prompt_text, token_count = render()
         if token_count > max_prompt_tokens:
             raise ValueError(
