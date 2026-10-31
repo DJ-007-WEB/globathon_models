@@ -32,8 +32,13 @@ Then it tries, in order, until one answer is valid and grounded:
    end-of-sequence is suppressed, so the model cannot return an empty answer.
 3. **Base model with the adapter disabled**: full evidence rules, JSON-primed.
 
-An attempt is rejected when it is empty, not valid JSON, or one of the adapter's memorized synthetic training
-answers. Statements quoting numbers that are not in the ML result are removed. The service stops starting new
+**Follow-up chat questions use a different order:** the base model answers first and the adapter is the fallback.
+The adapter was fine-tuned only to analyse a case (never to answer a question), so it returns the same style of
+analysis whatever is asked.
+
+An attempt is rejected when it is empty, not valid JSON, one of the adapter's memorized synthetic training
+answers, or a near-repeat of an earlier answer in the same conversation. The adapter's fixed training checks
+(e.g. "Verify timestamps, units and sensor-quality flags") are removed from lists. Statements quoting numbers that are not in the ML result are removed. The service stops starting new
 attempts once `LLM_TIME_BUDGET_SECONDS` (default 240) would be exceeded, so the backend's 300-second timeout
 is not hit. If every attempt fails, `/ready` → `last_inference_error` lists what each attempt produced, and the
 backend shows its evidence-only answer instead.

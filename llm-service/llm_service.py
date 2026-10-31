@@ -96,6 +96,13 @@ CANNED_TRAINING_TEXT = (
     "Use only the observations supplied in this synthetic case",
     "Synthetic example, not a real plant record",
 )
+# Fixed list items every training example carried; dropped as boilerplate, not rejected.
+TRAINING_BOILERPLATE_ITEMS = (
+    "Verify timestamps, units and sensor-quality flags",
+    "Compare output with an irradiance- and temperature-adjusted expectation",
+    "Review relevant inverter and grid event logs",
+    "A definitive diagnosis requires site-specific evidence",
+)
 
 
 class LLMService:
@@ -312,7 +319,8 @@ class LLMService:
         brief = self._evidence_brief(request)
         question = request.plant_context.get("user_question") if isinstance(request.plant_context, dict) else None
         history = [str(item)[:300] for item in (request.retrieved_context or [])[-4:]]
-        if question and not str(question).startswith("Explain the deterministic ML analysis"):
+        is_follow_up = bool(question) and not str(question).startswith("Explain the deterministic ML analysis")
+        if is_follow_up:
             task = f"Answer this question about the solar plant performance case: {question}"
         else:
             task = ("Analyse this solar plant performance case. Separate observations from possible "
@@ -336,6 +344,11 @@ class LLMService:
             attempts = attempts[:2]
         elif mode == "base":
             attempts = attempts[2:]
+        elif is_follow_up:
+            # The adapter was only trained to analyse a case, never to answer a question,
+            # so it gives the same analysis whatever is asked. Questions go to the base
+            # instruction model first; the adapter remains the fallback.
+            attempts = [attempts[2], attempts[1]]
         for attempt in attempts:
             attempt["text"] = self._chat_text(attempt["system"], attempt["user"],
                                               thinking_off=attempt["thinking_off"]) + attempt["prefill"]
@@ -694,9 +707,25 @@ class LLMService:
     @staticmethod
     def _drop_training_boilerplate(response: AnalysisResponse) -> AnalysisResponse:
         data = response.model_dump()
+        boilerplate = CANNED_TRAINING_TEXT + TRAINING_BOILERPLATE_ITEMS
         for field in ("observations", "possible_causes", "supporting_evidence", "recommended_checks", "limitations"):
-            data[field] = [item for item in data[field] if not any(text in item for text in CANNED_TRAINING_TEXT)]
+            data[field] = [item for item in data[field] if not any(text in item for text in boilerplate)]
         return AnalysisResponse.model_validate(data)
+
+    @staticmethod
+    def _repeats_earlier_answer(response: AnalysisResponse, request: AnalysisRequest) -> bool:
+        """True when the summary nearly repeats an earlier assistant answer in this conversation."""
+        from difflib import SequenceMatcher
+
+        summary = re.sub(r"\s+", " ", response.summary.strip().lower())
+        for turn in request.retrieved_context or []:
+            text = str(turn)
+            if not text.upper().startswith("ASSISTANT:"):
+                continue
+            earlier = re.sub(r"\s+", " ", text.split(":", 1)[1].strip().lower())
+            if earlier and SequenceMatcher(None, summary[:400], earlier[:400]).ratio() >= 0.85:
+                return True
+        return False
 
     def analyze(self, request: AnalysisRequest) -> AnalysisResponse:
         self._load()
@@ -739,6 +768,8 @@ class LLMService:
                     response = self._finalize(text, request)
                     if self._is_canned(response):
                         raise ValueError("repeated a memorized training answer instead of the supplied evidence")
+                    if self._repeats_earlier_answer(response, request):
+                        raise ValueError("repeated an earlier answer instead of answering the new question")
                     response = self._drop_training_boilerplate(response)
                 except Exception as exc:  # noqa: BLE001 - every failure is recorded and the next variant tried
                     longest_attempt = max(longest_attempt, time.monotonic() - attempt_started)

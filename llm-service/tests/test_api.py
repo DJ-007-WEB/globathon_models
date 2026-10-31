@@ -350,18 +350,48 @@ def test_evidence_brief_is_plain_text_with_supplied_values_only():
     assert "{" not in brief and "value_kwh" not in brief
 
 
-def test_adapter_is_prompted_in_its_training_format_with_the_question():
+def test_case_explanation_uses_the_adapter_in_its_training_format():
     good = '{"summary": "INV2 was the only inverter with alerts, during its logged trip on 2026-03-04.", "confidence": "moderate"}'
     service = _service([good])
-    result = service.analyze(_rich_request("Which inverter underperformed?"))
+    result = service.analyze(_rich_request())
     assert result.summary.startswith("INV2 was the only inverter")
     first = service.calls[0]
     assert first["adapter"] is True
     assert "You are a solar plant analysis assistant." in first["text"]
-    assert "Answer this question about the solar plant performance case: Which inverter underperformed?" in first["text"]
+    assert "Analyse this solar plant performance case." in first["text"]
     assert "Plant observations: Analysis status: success." in first["text"]
     assert service.last_generation_path == "adapter (training format)"
 
+
+def test_follow_up_questions_go_to_the_base_model_first():
+    answer = 'INV2 is the only inverter with alerts.", "confidence": "moderate"}'
+    service = _service([answer])
+    result = service.analyze(_rich_request("Which inverter underperformed?"))
+    assert result.summary == "INV2 is the only inverter with alerts."
+    assert service.calls[0]["adapter"] is False
+    assert "Question: Which inverter underperformed?" in service.calls[0]["text"]
+    assert service.last_generation_path == "base model (adapter disabled)"
+
+
+def test_an_answer_repeating_the_previous_turn_is_rejected():
+    request = _rich_request("What should I check first?")
+    request.retrieved_context = ["USER: Which inverter underperformed?",
+                                 "ASSISTANT: INV2 is the only inverter with alerts during its logged trip."]
+    repeated = 'INV2 is the only inverter with alerts during its logged trip.", "confidence": "moderate"}'
+    fresh = '{"summary": "Check INV2 alarm history for 2026-03-04 first.", "confidence": "moderate"}'
+    service = _service([repeated, fresh[len('{"summary": "'):]])
+    result = service.analyze(request)
+    assert result.summary == "Check INV2 alarm history for 2026-03-04 first."
+    assert "repeated an earlier answer" not in (service.last_inference_error or "")
+
+
+def test_training_boilerplate_checks_are_removed():
+    raw = ('{"summary": "INV2 had alerts during its trip.", "recommended_checks": '
+           '["Verify timestamps, units and sensor-quality flags.", "Inspect INV2 for the 2026-03-04 trip."], '
+           '"confidence": "moderate"}')
+    service = _service([raw])
+    result = service.analyze(_rich_request())
+    assert result.recommended_checks == ["Inspect INV2 for the 2026-03-04 trip."]
 
 def test_empty_adapter_output_falls_back_to_primed_then_base_model():
     # Attempt 1 and 2 (adapter) return nothing; attempt 3 (base model) answers. The
