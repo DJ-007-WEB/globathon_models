@@ -1348,9 +1348,19 @@ def _waterfall(
     actual_value = _as_float(actual.get("value_kwh"))
     if forecast_value is None or expected_value is None or actual_value is None:
         result = Waterfall.reconcile(None, None, None, tolerance_kwh=tolerance)
-        result["reason"] = "Forecast, expected, or actual energy is unavailable."
+        missing = []
+        for label, component in (
+            ("Forecast", forecast),
+            ("Expected", expected),
+            ("Actual", actual),
+        ):
+            if _as_float(component.get("value_kwh")) is None:
+                reason = component.get("reason")
+                missing.append(f"{label} energy: {reason}" if reason else f"{label} energy is unavailable.")
+        result["reason"] = "Energy waterfall unavailable. " + " ".join(missing)
         result["limitations"] = [
-            "The waterfall is unavailable until forecast, expected and actual energy are all available."
+            "The waterfall requires forecast, expected and actual energy.",
+            *missing,
         ]
         return result
 
