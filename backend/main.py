@@ -572,6 +572,9 @@ def _fallback_chat_answer(question: str, ml_result: dict, prior_explanation: dic
 
     anomalies = ml_result.get("anomalies") if isinstance(ml_result.get("anomalies"), list) else []
     hypotheses = ml_result.get("hypotheses") if isinstance(ml_result.get("hypotheses"), list) else []
+    supported_causes = [str(item.get("summary") or item.get("hypothesis") or item.get("message"))
+                        for item in hypotheses if isinstance(item, dict)
+                        and (item.get("summary") or item.get("hypothesis") or item.get("message"))]
     if any(term in question_text for term in ("anomal", "inverter", "fault", "device", "underperform")):
         for item in anomalies[:8]:
             if isinstance(item, dict) and item.get("message"):
@@ -604,11 +607,11 @@ def _fallback_chat_answer(question: str, ml_result: dict, prior_explanation: dic
     return {
         "summary": summary,
         "observations": observations[:10],
-        "possible_causes": [],
-        "supporting_evidence": [],
+        "possible_causes": supported_causes[:8],
+        "supporting_evidence": [str(item) for item in (ml_result.get("evidence") or [])[:8]],
         "recommended_checks": checks,
         "limitations": list(dict.fromkeys(limitations))[:12],
-        "confidence": "insufficient_evidence",
+        "confidence": "moderate" if supported_causes else "insufficient_evidence",
     }
 
 
