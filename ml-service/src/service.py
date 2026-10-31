@@ -1755,6 +1755,22 @@ def _analyze_bundle(
     )
     warnings = list(bundle.warnings) + context_warnings
 
+    # Keep the source's synthetic-data marker visible in the final report.
+    # Synthetic scenarios are useful for integration checks, not real-world
+    # prediction-accuracy claims.
+    if "synthetic" in context.columns:
+        synthetic = context["synthetic"].astype(str).str.strip().str.lower().isin(
+            {"true", "1", "yes", "y"}
+        )
+        if synthetic.any() and synthetic.all():
+            warnings.append(
+                "All source records are marked synthetic; use this result for integration validation, not real-world accuracy claims."
+            )
+        elif synthetic.any():
+            warnings.append(
+                "The source mixes synthetic and non-synthetic records; interpret metrics with this data-quality limitation."
+            )
+
     timestamps = (
         pd.to_datetime(context["timestamp"], errors="coerce")
         if "timestamp" in context.columns
