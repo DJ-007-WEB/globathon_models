@@ -239,7 +239,7 @@ def test_prompt_builder_preserves_ml_evidence_and_avoids_silent_truncation():
     )
     prompt, token_count = service._prepare_prompt(request)
     assert token_count <= service.max_input_tokens
-    user_payload_start = prompt.index("\\nUser:\\n")
+    user_payload_start = prompt.index("\nUser:\n")
     user_payload = prompt[user_payload_start:]
     assert user_payload.index('"ml_results"') < user_payload.index('"observations"')
     assert '"value_kwh":123.45' in prompt
