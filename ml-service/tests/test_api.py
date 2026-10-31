@@ -113,7 +113,7 @@ def test_temp_upload_is_removed_after_pipeline(monkeypatch):
     assert not created[0].exists()
 
 
-def test_temp_upload_is_removed_when_pipeline_raises(monkeypatch):
+def test_temp_upload_is_removed_when_pipeline_raises(monkeypatch, caplog):
     created = []
     real_temporary_directory = api.tempfile.TemporaryDirectory
 
@@ -131,6 +131,8 @@ def test_temp_upload_is_removed_when_pipeline_raises(monkeypatch):
         response = client.post("/api/v1/analyze", files={"file": ("plant.csv", CSV)})
     assert response.status_code == 500
     assert "sensitive parser details" not in response.text
+    assert "RuntimeError" in response.json()["detail"]
+    assert any(record.exc_info for record in caplog.records), "pipeline traceback must be logged"
     assert len(created) == 1
     assert not created[0].exists()
 

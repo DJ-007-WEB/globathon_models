@@ -35,7 +35,7 @@ load_dotenv()
 
 ML_API_URL = os.getenv("ML_API_URL", "http://127.0.0.1:8002").rstrip("/")
 import logging
-logger = logging.getLogger("solarsleuth.backend")
+logger = logging.getLogger("uvicorn.error").getChild("solarsleuth.backend")
 
 LLM_API_URL = os.getenv("LLM_API_URL", "http://127.0.0.1:8000").rstrip("/")
 ML_TIMEOUT_SECONDS = float(os.getenv("ML_TIMEOUT_SECONDS", "300"))
@@ -274,8 +274,11 @@ async def _run_ml(content: bytes, filename: str, *, plant_id: str, mode: str,
         files=files,
     )
     if response.status_code >= 400:
+        logger.warning("ML service returned HTTP %s: %s", response.status_code, response.text[:500])
         if response.status_code in (401, 403):
-            raise HTTPException(status_code=502, detail="The ML service rejected internal service authentication.")
+            raise HTTPException(status_code=502, detail="The ML service rejected internal service authentication. Check that INTERNAL_SERVICE_TOKEN matches in backend and ML .env files.")
+        if response.status_code == 429:
+            raise HTTPException(status_code=429, detail="The ML service is busy with another analysis. Retry shortly.")
         if response.status_code in (413, 415, 422):
             # ML boundary errors are user-facing validation messages, not internal details.
             try:
@@ -285,7 +288,12 @@ async def _run_ml(content: bytes, filename: str, *, plant_id: str, mode: str,
             if not isinstance(detail, str) or len(detail) > 300:
                 detail = "The deterministic ML service rejected this dataset."
             raise HTTPException(status_code=response.status_code, detail=detail)
-        raise HTTPException(status_code=502, detail="The deterministic ML service could not process this dataset.")
+        try:
+            ml_detail = response.json().get("detail")
+        except ValueError:
+            ml_detail = None
+        suffix = f" {ml_detail}" if isinstance(ml_detail, str) and len(ml_detail) <= 300 else ""
+        raise HTTPException(status_code=502, detail=f"The deterministic ML service could not process this dataset (HTTP {response.status_code}).{suffix}")
     try:
         result = response.json()
     except ValueError as exc:
@@ -314,7 +322,7 @@ async def _post_llm(payload: dict) -> dict:
     )
     if response.status_code >= 400:
         if response.status_code in (401, 403):
-            raise HTTPException(status_code=502, detail="The local LLM rejected internal service authentication.")
+            raise HTTPException(status_code=502, detail="The local LLM rejected internal service authentication. Check that INTERNAL_SERVICE_TOKEN matches in backend and LLM .env files.")
         if response.status_code in (503, 504):
             raise HTTPException(status_code=503, detail="The local LLM service is unavailable or not ready.")
         raise HTTPException(status_code=502, detail="The local LLM could not produce an explanation.")

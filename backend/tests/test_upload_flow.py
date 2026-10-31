@@ -230,3 +230,24 @@ def test_upload_accepts_real_xlsx_and_tab_delimited_csv(monkeypatch):
     assert xlsx.status_code == 200, xlsx.text
     assert tsv.status_code == 200, tsv.text
     assert received == ["plant.xlsx", "plant.csv"]
+
+
+@pytest.mark.parametrize("ml_status,ml_body,expected_status,expected_text", [
+    (429, {"detail": "ML analysis capacity is busy. Retry shortly."}, 429, "busy"),
+    (500, {"detail": "The deterministic ML pipeline failed (KeyError). See the ML service log for details."}, 502, "(HTTP 500). The deterministic ML pipeline failed (KeyError)"),
+])
+def test_ml_service_errors_are_reported_distinctly(monkeypatch, ml_status, ml_body, expected_status, expected_text):
+    import httpx
+
+    async def fake_request(method, url, *, timeout_seconds, **kwargs):
+        return httpx.Response(ml_status, json=ml_body)
+
+    async def unexpected_llm(payload):
+        raise AssertionError("LLM must not be called when ML fails")
+
+    monkeypatch.setattr(main, "_request_service", fake_request)
+    monkeypatch.setattr(main, "_post_llm", unexpected_llm)
+    with TestClient(main.app) as client:
+        response = client.post("/api/v1/analyze/upload", files={"file": ("plant.csv", b"timestamp,ac_power_kw\n1,2\n", "text/csv")})
+    assert response.status_code == expected_status
+    assert expected_text in response.json()["detail"]

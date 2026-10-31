@@ -361,3 +361,23 @@ def test_identical_prompt_reuses_validated_explanation(monkeypatch):
     result = service.analyze(_grounding_request())
     assert result.summary == "cached answer"
     assert calls == []
+
+
+def test_truncated_model_json_keeps_complete_fields_and_validates():
+    from llm_service import LLMService
+
+    raw = ('<think></think>{"summary": "Measured energy was 5374.12 kWh.", '
+           '"observations": ["Measured energy was 5374.12 kWh.", "Expected energy was 5379.16 kWh."], '
+           '"possible_causes": [], "recommended_checks": ["Compare inverter logs for the analysed interval and the')
+    result = LLMService._finalize(LLMService.__new__(LLMService), raw, _grounding_request())
+    assert result.summary == "Measured energy was 5374.12 kWh."
+    assert result.observations == ["Measured energy was 5374.12 kWh.", "Expected energy was 5379.16 kWh."]
+    assert result.recommended_checks == ["Compare inverter logs for the analysed interval and the…"]
+
+
+def test_truncated_json_never_treats_array_values_as_keys():
+    from llm_service import LLMService
+
+    assert LLMService._extract_json('{"summary": "S", "observations": ["x", "y"') == {
+        "summary": "S", "observations": ["x", "y"]}
+    assert LLMService._extract_json('{"summary": "S", "limit') == {"summary": "S"}

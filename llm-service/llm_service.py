@@ -38,6 +38,7 @@ HOW TO EXPLAIN THE EVIDENCE
 - Explain material missing fields, unresolved mappings, incomplete forecast coverage, timestamp ambiguity and other limitations.
 - Recommend practical checks that verify evidence. Phrase them as actions for the operator, not completed actions.
 - Do not repeat the same generic advice in every section. Keep each item concise and specific.
+- Keep the whole answer short enough to finish: a summary of at most 4 sentences and at most 4 items per list, each one sentence. Always close the JSON object.
 
 GOOD OUTPUT EXAMPLES (illustrative wording only; never copy their numbers into a real answer)
 - Good observation: "Measured energy was 1,245.6 kWh for the analysed period, as reported by the ML service."
@@ -270,7 +271,78 @@ class LLMService:
                 return value
         if candidates:
             return candidates[-1]
+        start = text.find("{")
+        if start >= 0:
+            # Small local models often hit max_new_tokens mid-object. Close the
+            # open strings/arrays so the completed fields can still be validated;
+            # the cut-off tail is dropped, never invented.
+            repaired = LLMService._close_truncated_json(text[start:])
+            if repaired is not None:
+                return repaired
         raise ValueError("Model output did not contain a complete JSON object.")
+
+    @staticmethod
+    def _close_truncated_json(text: str) -> dict[str, Any] | None:
+        """Parse a JSON object cut off by the generation limit.
+
+        Keeps every complete value, keeps a long cut-off string value marked with
+        an ellipsis, and drops a dangling key. Returns None when nothing usable remains.
+        """
+        stack: list[str] = []          # closing characters for open containers
+        expect_key: list[bool] = []    # per open container: next string is an object key
+        in_string = escaped = is_key = False
+        string_start = 0
+        safe_end, safe_stack = 0, []   # last prefix that ends on a complete value
+        for index, char in enumerate(text):
+            if in_string:
+                if escaped:
+                    escaped = False
+                elif char == "\\":
+                    escaped = True
+                elif char == '"':
+                    in_string = False
+                    if not is_key:
+                        safe_end, safe_stack = index + 1, list(stack)
+                continue
+            if char == '"':
+                in_string, string_start = True, index
+                is_key = bool(stack) and stack[-1] == "}" and expect_key[-1]
+            elif char in "{[":
+                stack.append("}" if char == "{" else "]")
+                expect_key.append(char == "{")
+            elif char in "}]":
+                if not stack:
+                    break
+                stack.pop()
+                expect_key.pop()
+                if not stack:
+                    try:
+                        value = json.loads(text[:index + 1])
+                    except json.JSONDecodeError:
+                        return None
+                    return value if isinstance(value, dict) else None
+                safe_end, safe_stack = index + 1, list(stack)
+            elif char == ":" and stack and stack[-1] == "}":
+                expect_key[-1] = False
+            elif char == "," and stack:
+                expect_key[-1] = stack[-1] == "}"
+
+        if in_string and not is_key and index - string_start > 20:
+            # Keep a substantial cut-off value rather than discarding the model's text.
+            partial = text[:index + 1].rstrip("\\")
+            candidate = partial + '…"' + "".join(reversed(stack))
+            try:
+                value = json.loads(candidate)
+                return value if isinstance(value, dict) else None
+            except json.JSONDecodeError:
+                pass
+        if not safe_end:
+            return None
+        try:
+            value = json.loads(text[:safe_end] + "".join(reversed(safe_stack)))
+        except json.JSONDecodeError:
+            return None
+        return value if isinstance(value, dict) else None
 
     @staticmethod
     def _normalize_response(data: dict[str, Any]) -> dict[str, Any]:

@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import hmac
 import io
+import logging
 import math
 import os
 import tempfile
@@ -23,6 +24,7 @@ from starlette.concurrency import run_in_threadpool
 from src.pipeline import run_pipeline
 
 load_dotenv()
+logger = logging.getLogger("uvicorn.error").getChild("solarsleuth.ml")
 
 MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_BYTES", str(25 * 1024 * 1024)))
 MAX_CONCURRENT_ANALYSES = max(1, int(os.getenv("MAX_CONCURRENT_ANALYSES", "2")))
@@ -177,7 +179,12 @@ async def analyze_upload(
             except HTTPException:
                 raise
             except Exception as exc:
-                raise HTTPException(status_code=500, detail="The deterministic ML pipeline could not complete this analysis.") from exc
+                # Log the traceback here; the HTTP detail stays free of internal paths and data.
+                logger.exception("ML pipeline failed for plant %s (%d input file(s))", plant_id, len(contents))
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"The deterministic ML pipeline failed ({type(exc).__name__}). See the ML service log for details.",
+                ) from exc
             if not isinstance(result, dict):
                 raise HTTPException(status_code=502, detail="The ML pipeline returned an invalid result.")
             if result.get("analysis_status") not in {"success", "partial", "invalid_input", "failed"}:
