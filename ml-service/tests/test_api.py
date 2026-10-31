@@ -89,14 +89,14 @@ def test_upload_rejects_non_finite_interval():
 
 def test_temp_upload_is_removed_after_pipeline(monkeypatch):
     created = []
-    real_named_temporary_file = api.tempfile.NamedTemporaryFile
+    real_temporary_directory = api.tempfile.TemporaryDirectory
 
-    def tracking_temp_file(*args, **kwargs):
-        handle = real_named_temporary_file(*args, **kwargs)
+    def tracking_temp_directory(*args, **kwargs):
+        handle = real_temporary_directory(*args, **kwargs)
         created.append(Path(handle.name))
         return handle
 
-    monkeypatch.setattr(api.tempfile, "NamedTemporaryFile", tracking_temp_file)
+    monkeypatch.setattr(api.tempfile, "TemporaryDirectory", tracking_temp_directory)
     monkeypatch.setattr(
         api,
         "run_pipeline",
@@ -115,17 +115,17 @@ def test_temp_upload_is_removed_after_pipeline(monkeypatch):
 
 def test_temp_upload_is_removed_when_pipeline_raises(monkeypatch):
     created = []
-    real_named_temporary_file = api.tempfile.NamedTemporaryFile
+    real_temporary_directory = api.tempfile.TemporaryDirectory
 
-    def tracking_temp_file(*args, **kwargs):
-        handle = real_named_temporary_file(*args, **kwargs)
+    def tracking_temp_directory(*args, **kwargs):
+        handle = real_temporary_directory(*args, **kwargs)
         created.append(Path(handle.name))
         return handle
 
     def broken_pipeline(*args, **kwargs):
         raise RuntimeError("sensitive parser details")
 
-    monkeypatch.setattr(api.tempfile, "NamedTemporaryFile", tracking_temp_file)
+    monkeypatch.setattr(api.tempfile, "TemporaryDirectory", tracking_temp_directory)
     monkeypatch.setattr(api, "run_pipeline", broken_pipeline)
     with TestClient(api.app) as client:
         response = client.post("/api/v1/analyze", files={"file": ("plant.csv", CSV)})
