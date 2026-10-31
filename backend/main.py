@@ -791,6 +791,7 @@ async def ready() -> dict:
     llm_error = None
     llm_model_name = None
     llm_adapter_available = False
+    llm_prompt_tokens = None
     async with httpx.AsyncClient(timeout=httpx.Timeout(3.0, connect=1.0), trust_env=False) as client:
         try:
             response = await client.get(f"{ML_API_URL}/ready")
@@ -810,6 +811,7 @@ async def ready() -> dict:
             llm_error = data.get("last_inference_error") or data.get("load_error")
             llm_model_name = data.get("model_name")
             llm_adapter_available = bool(data.get("adapter_available", False))
+            llm_prompt_tokens = data.get("last_prompt_tokens")
         except (httpx.HTTPError, ValueError):
             pass
     is_ready = (
@@ -826,6 +828,7 @@ async def ready() -> dict:
         "llm_error": llm_error,
         "llm_model_name": llm_model_name,
         "llm_adapter_available": llm_adapter_available,
+        "llm_prompt_tokens": llm_prompt_tokens,
         **checks,
     }
 
