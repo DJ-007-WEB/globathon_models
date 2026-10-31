@@ -71,6 +71,8 @@ class TableData:
     dropped_empty_column_names: list[str] = field(default_factory=list)
     encoding: str | None = None
     delimiter: str | None = None
+    column_units: dict[str, str] = field(default_factory=dict)
+    unit_rows_skipped: int = 0
 
     def to_manifest(self) -> dict[str, Any]:
         profiles = []
@@ -107,6 +109,8 @@ class TableData:
             "dropped_empty_rows": self.dropped_empty_rows,
             "dropped_empty_columns": self.dropped_empty_columns,
             "dropped_empty_column_names": list(self.dropped_empty_column_names),
+            "column_units": {self.column_aliases.get(key, key): value for key, value in self.column_units.items()},
+            "unit_rows_skipped": self.unit_rows_skipped,
             "derived_columns": [UTC_COLUMN, LOCAL_COLUMN, RAW_TIMESTAMP_COLUMN, ROW_ORDER_COLUMN],
         }
 
@@ -160,6 +164,33 @@ def _numeric_like(value: Any) -> bool:
     if re.match(r"^\d{1,3}(,\d{3})+(\.\d+)?$", text):
         return True
     return False
+
+
+_UNIT_TOKEN = re.compile(
+    r"^[\[(]?\s*(?:"
+    r"[kmgµu]?(?:w|wh|va|var|vah|varh|wp)(?:\s*/\s*(?:m2|m²|m\^2|sqm|kwp))?"
+    r"|°\s*[cfk]?|deg\s*[cf]?|degrees?\s*[cf]?|[cf]|%|pct|percent|m/s|km/h|mph|mm|hpa|kpa|pa|bar"
+    r"|[kmu]?v|[km]?a|hz|s|sec|secs|min|mins|h|hr|hrs|ratio|-|pu|p\.u\.|n/a|na|unit|units|kwh/kwp"
+    r")\s*[\])]?$",
+    re.IGNORECASE,
+)
+_DATE_FORMAT_TOKEN = re.compile(r"^(?:(?:yyyy|yy|mm|dd|hh|ss|m|d|h)[-/.: t]?)+$", re.IGNORECASE)
+
+
+def _unit_like(value: Any) -> bool:
+    """True for cells such as 'kW', '[W/m²]', '°C' or 'dd-mm-yyyy hh:mm' in a units row."""
+    if _is_empty(value) or _numeric_like(value):
+        return False
+    text = str(value).strip()
+    return bool(_UNIT_TOKEN.match(text) or _DATE_FORMAT_TOKEN.match(text))
+
+
+def _is_unit_row(values: list[Any]) -> bool:
+    """A row is a units/metadata row when most non-empty cells are units and none are numeric."""
+    non_empty = [value for value in values if not _is_empty(value)]
+    if not non_empty or any(_numeric_like(value) for value in non_empty):
+        return False
+    return sum(1 for value in non_empty if _unit_like(value)) / len(non_empty) >= 0.6
 
 
 def _date_like_ratio(series: pd.Series) -> float:
@@ -234,6 +265,11 @@ def detect_header_row(
         )
         if header_ratio < 0.5:
             score *= 0.55
+        # Unit tokens often score well against aliases ("W/m2", "kW"); a units row
+        # directly under the real header must not win header detection.
+        unit_row = _is_unit_row(row.tolist())
+        if unit_row:
+            score *= 0.35
         candidates.append(
             {
                 "header_row": index,
@@ -242,6 +278,7 @@ def detect_header_row(
                 "text_ratio": round(text_ratio, 4),
                 "vocab_hits": vocab_hits,
                 "data_numeric_ratio": round(data_numeric, 4),
+                "unit_row": unit_row,
             }
         )
 
@@ -380,10 +417,15 @@ def _strip_time(text: str) -> str:
     return re.split(r"[ T]", str(text).strip(), maxsplit=1)[0]
 
 
-def _detect_date_order(values: Iterable[Any], header_text: str = "") -> dict[str, Any]:
+def _detect_date_order(values: Iterable[Any], header_text: str = "", override: str | None = None) -> dict[str, Any]:
     texts = [str(value).strip() for value in values if not _is_empty(value)]
     if not texts:
         return {"order": None, "reason": "No date values available.", "evidence": []}
+    if override:
+        order = str(override).strip().upper()
+        if order not in {"DMY", "MDY", "YMD"}:
+            return {"order": None, "reason": f"Unsupported date-order override {override!r}.", "evidence": []}
+        return {"order": order, "reason": "Date order supplied explicitly by the caller.", "evidence": ["override"]}
 
     ymd = 0
     other = 0
@@ -391,7 +433,9 @@ def _detect_date_order(values: Iterable[Any], header_text: str = "") -> dict[str
     second_values: list[int] = []
     two_digit_year = False
     separators: set[str] = set()
-    for text in texts[:500]:
+    # Scan every value: a month whose first rows are days 01-12 is only
+    # disambiguated later in the column.
+    for text in dict.fromkeys(texts):
         date_part = _strip_time(text)
         match = _DATE_YMD.match(date_part)
         if match:
@@ -599,7 +643,9 @@ def _parse_timestamp_values(
     text_series = pd.Series(texts, index=date_values.index, dtype=object)
 
     date_part_values = [_strip_time(text) for text in texts if text]
-    order_info = _detect_date_order(date_part_values, header_text=header_text)
+    order_info = _detect_date_order(
+        date_part_values, header_text=header_text, override=get_path(config, "time.date_order", None)
+    )
     time_info = _detect_time_format([value for value in (time_values.tolist() if time_values is not None else []) if not _is_empty(value)])
     if time_values is None:
         # Infer time presence from the timestamp text itself.
@@ -799,6 +845,7 @@ def _detect_timestamp(
     vocab: dict[str, Any],
     config: dict[str, Any],
     explicit_timezone: str | None,
+    units_by_label: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     minimum = float(get_path(config, "mapping.minimum_candidate_score", 0.52))
     candidates: list[dict[str, Any]] = []
@@ -856,7 +903,8 @@ def _detect_timestamp(
     utc, local, info = _parse_timestamp_values(
         date_series,
         time_series,
-        header_text=date_candidate["label"],
+        # A units row such as "dd-mm-yyyy hh:mm" is explicit date-order evidence.
+        header_text=" ".join(filter(None, [date_candidate["label"], (units_by_label or {}).get(date_candidate["label"])])),
         explicit_timezone=explicit_timezone,
         config=config,
     )
@@ -931,6 +979,29 @@ def _build_table(
     data.columns = list(aliases.keys())
     data = data.reset_index(drop=True)
 
+    # Skip leading units/metadata rows (and blank spacer rows) under the header,
+    # keeping the units as column metadata. A row with any numeric value is data.
+    column_units: dict[str, str] = {}
+    unit_rows_skipped = 0
+    leading = 0
+    while leading < min(len(data), 4):
+        values = data.iloc[leading].tolist()
+        if all(_is_empty(value) for value in values):
+            leading += 1
+            continue
+        if not _is_unit_row(values):
+            break
+        for column, value in zip(data.columns, values):
+            if not _is_empty(value) and str(column) not in column_units:
+                column_units[str(column)] = str(value).strip()
+        unit_rows_skipped += 1
+        leading += 1
+    if unit_rows_skipped:
+        data = data.iloc[leading:].reset_index(drop=True)
+        warnings.append(
+            f"{unit_rows_skipped} units row(s) under the header were used as column units, not data."
+        )
+
     dropped_rows = 0
     dropped_columns = 0
     dropped_column_names: list[str] = []
@@ -955,7 +1026,8 @@ def _build_table(
     data = typed
 
     labels = [aliases.get(str(column), str(column)) for column in data.columns]
-    timestamp_info = _detect_timestamp(data, labels, vocab, config, explicit_timezone)
+    units_by_label = {aliases.get(str(column), str(column)): unit for column, unit in column_units.items()}
+    timestamp_info = _detect_timestamp(data, labels, vocab, config, explicit_timezone, units_by_label)
     parsed_utc = timestamp_info.pop("_utc_series", None)
     parsed_local = timestamp_info.pop("_local_series", None)
     layout = detect_layout(data, labels, vocab, config)
@@ -987,6 +1059,8 @@ def _build_table(
         dropped_empty_column_names=dropped_column_names,
         encoding=encoding,
         delimiter=delimiter,
+        column_units={column: unit for column, unit in column_units.items() if column in data.columns},
+        unit_rows_skipped=unit_rows_skipped,
     )
 
 

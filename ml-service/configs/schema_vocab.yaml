@@ -5,7 +5,7 @@
 # Unit aliases are only used when the unit token appears in the original header.
 # A bare magnitude is never used to infer a unit.
 
-vocab_version: "1.0.0"
+vocab_version: "1.1.0"
 
 normalization:
   lowercase: true
@@ -62,6 +62,10 @@ roles:
       - incident irradiance
       - in plane irradiance
       - irradiancia poa
+      - global tilted irradiance
+      - global tilted
+      - tilted global irradiance
+      - globinc
       - irradiance plan
 
   irradiance_ghi:
@@ -78,6 +82,8 @@ roles:
       - pyranometer
       - irradiancia global
       - irradiance horizontale
+      - globhor
+      - global horizontal irradiation
 
   ambient_temperature:
     description: Ambient / air temperature.
@@ -99,6 +105,11 @@ roles:
       - temperatura ambiente
       - temp ambiante
       - umgebungstemperatur
+      - t amb
+      - tamb
+      - t ambient
+      - temp amb
+      - ambient
 
   module_temperature:
     description: PV module / cell back-sheet temperature.
@@ -121,6 +132,13 @@ roles:
       - temperatura modulo
       - temperatura modulo
       - module Temperatur
+      - tarray
+      - t array
+      - array temperature
+      - array temp
+      - t module
+      - tmod
+      - t mod
 
   power_ac:
     description: AC active power at the inverter or plant meter.
@@ -140,6 +158,14 @@ roles:
       - potencia ac
       - potencia activa
       - puissance active
+      - e grid
+      - egrid
+      - grid power
+      - grid output
+      - ac grid power
+      - p grid
+      - pgrid
+      - grid injection power
 
   power_dc:
     description: DC power at the array / inverter DC input.
@@ -156,6 +182,12 @@ roles:
       - p mpp
       - potencia dc
       - potencia continua
+      - e array
+      - earray
+      - array output
+      - dc array power
+      - p array
+      - parray
 
   energy_interval:
     description: Energy generated during one interval (not cumulative).
@@ -258,6 +290,12 @@ roles:
       - rated dc kw
       - array capacity
       - dc installed capacity
+      - dc kwp
+      - kwp dc
+      - dc rating
+      - rated dc
+      - dc nameplate
+      - dc peak power
 
   inverter_efficiency:
     description: Inverter conversion efficiency as a fraction or percentage.
@@ -381,6 +419,12 @@ roles:
       - forecasted energy
       - predicted energy
       - expected energy kwh
+      - design expected energy
+      - design expected energy kwh
+      - design energy kwh
+      - expected ac energy
+      - predicted ac energy
+      - design ac energy
 
   forecast_power:
     description: Forecast AC power for one interval, not measured power.
@@ -392,6 +436,14 @@ roles:
       - forecast power
       - predicted power
       - expected power kw
+      - design expected ac kw
+      - design expected ac power
+      - design expected power
+      - expected ac power
+      - expected ac kw
+      - predicted ac power
+      - design ac power
+      - design power
 
   forecast_poa:
     description: Forecast plane-of-array irradiance for one interval.
@@ -401,6 +453,10 @@ roles:
       - forecast poa irradiance
       - forecast poa
       - predicted irradiance
+      - design poa
+      - design poa w m2
+      - design poa irradiance
+      - expected poa
 
   availability_status:
     description: Operating / availability / communication state.

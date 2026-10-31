@@ -8,6 +8,8 @@ also consistent with it; a log entry alone remains unresolved for causation.
 
 from __future__ import annotations
 
+import re
+
 from typing import Any, Mapping
 
 import numpy as np
@@ -102,9 +104,16 @@ def _event_frame(event_log: Any) -> pd.DataFrame:
         return pd.DataFrame()
 
 
+_OUTAGE_EVENT_TERMS = tuple(
+    str(term).lower()
+    for term in get_path(load_defaults(), "attribution.outage_event_terms", None)
+    or ("curtail", "outage", "load_shed")
+)
+
+
 def _event_kind(event_type: Any) -> str:
     text = str(event_type or "").lower()
-    if "curtail" in text or "outage" in text or "load_shed" in text:
+    if any(term in text for term in _OUTAGE_EVENT_TERMS):
         return "outage_curtailment"
     if "communication" in text or "telemetry" in text or "missing" in text:
         return "data_communication"
@@ -128,13 +137,17 @@ def _overlapping_events(
         return []
     starts = pd.to_datetime(frame["start_utc"], errors="coerce", utc=True)
     ends = pd.to_datetime(frame["end_utc"], errors="coerce", utc=True)
-    assets = frame["asset_id"].astype(str) if "asset_id" in frame.columns else pd.Series("", index=frame.index)
-    event_types = frame["event_type"].astype(str) if "event_type" in frame.columns else pd.Series("", index=frame.index)
-    device_text = str(device) if device is not None else ""
+    def text(value: Any) -> str:
+        # Missing or non-string cells (NaN asset for a plant-wide event) are blank.
+        return "" if value is None or (isinstance(value, float) and value != value) else str(value).strip()
+
+    assets = frame["asset_id"].map(text) if "asset_id" in frame.columns else pd.Series("", index=frame.index)
+    event_types = frame["event_type"].map(text) if "event_type" in frame.columns else pd.Series("", index=frame.index)
+    device_key = re.sub(r"[^a-z0-9]", "", text(device).lower())
+    plant_wide = {"", "plant", "plantwide", "site", "all", "nan", "none"}
     asset_match = assets.map(
-        lambda value: value in {"PLANT", "PLANT-WIDE", device_text}
+        lambda value: re.sub(r"[^a-z0-9]", "", value.lower()) in plant_wide | ({device_key} if device_key else set())
         or "sensor" in value.lower()
-        or value == ""
     )
     type_match = event_types.map(lambda value: "sensor" in value.lower())
     mask = (starts <= timestamp_value) & (ends >= timestamp_value) & (asset_match | type_match)

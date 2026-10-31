@@ -150,7 +150,7 @@ def test_wide_device_type_token_is_preserved(tmp_path):
     )
     mapping = map_table(table)
     assert table.layout["layout_type"] == "wide"
-    assert set(table.layout["devices"]) == {"inv-01", "inv-02"}
+    assert set(table.layout["devices"]) == {"INV-01", "INV-02"}
     assert mapping.role_to_columns["power_ac"] == ["INV-01 AC Power (kW)", "INV-02 AC Power (kW)"]
 
 def test_solar_sleuth_enriched_long_format_csv_headers_map_without_false_ambiguity(tmp_path):

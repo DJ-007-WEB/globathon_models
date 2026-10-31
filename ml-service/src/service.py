@@ -19,7 +19,9 @@ from __future__ import annotations
 
 import json
 import math
+import re
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
@@ -46,10 +48,12 @@ from .ingestion import (
     UTC_COLUMN,
     TableData,
     _detect_timestamp,
+    _parse_timestamp_values,
     ingest_file,
 )
 from .schema_mapping import (
     apply_conversion,
+    compact_text,
     detect_layout,
     map_table,
     normalize_text,
@@ -379,6 +383,166 @@ def _read_metadata(value: Any, *, name: str = "metadata") -> tuple[dict[str, Any
         return (dict(payload), []) if isinstance(payload, Mapping) else ({}, [f"Metadata file {_safe_name(path)} is not an object."])
     return {}, [f"{name} is not a mapping or JSON path."]
 
+# ---------------------------------------------------------------------------
+# Workbook companion sheets
+# ---------------------------------------------------------------------------
+
+_METADATA_KEYS: tuple[tuple[str, str], ...] = (
+    (r"\b(time ?zone|timezone|tz)\b", "timezone"),
+    (r"\b(latitude|lat)\b", "latitude"),
+    (r"\b(longitude|lon|lng|long)\b", "longitude"),
+    (r"\b(plant|site) ?(id|identifier|code)\b", "plant_id"),
+)
+_MEASUREMENT_SHEET_ROLES = {
+    "power_ac", "power_dc", "energy_interval", "energy_cumulative", "irradiance_poa", "irradiance_ghi",
+}
+
+
+def _sheet_selection(sheet_name: Any) -> dict[str, str]:
+    """Normalize the sheet option: a plain name selects the operating sheet;
+    'operating=Data;devices=Units' or a mapping selects per role."""
+    if sheet_name is None or sheet_name == "":
+        return {}
+    if isinstance(sheet_name, Mapping):
+        return {str(role): str(name) for role, name in sheet_name.items() if name}
+    text = str(sheet_name)
+    if "=" not in text:
+        return {"operating": text}
+    selection: dict[str, str] = {}
+    for part in re.split(r"[;,]", text):
+        if "=" in part:
+            role, name = part.split("=", 1)
+            if role.strip() and name.strip():
+                selection[role.strip().lower()] = name.strip()
+    return selection
+
+
+def _valid_timezone(value: Any) -> str | None:
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        from zoneinfo import ZoneInfo
+
+        ZoneInfo(text)
+        return text
+    except Exception:  # noqa: BLE001 - any unknown zone is simply not used
+        return "UTC" if text.upper() in {"UTC", "GMT", "Z"} else None
+
+
+def _scan_workbook_metadata(path: Path) -> tuple[dict[str, Any], str | None, list[str]]:
+    """Read key/value metadata (time zone, location, notes) from a narrow sheet."""
+    try:
+        sheets = pd.read_excel(path, sheet_name=None, header=None, dtype=object, nrows=200, engine="openpyxl")
+    except Exception:  # noqa: BLE001 - unreadable workbooks are reported by ingestion
+        return {}, None, []
+    for sheet, raw in sheets.items():
+        raw = raw.dropna(how="all").dropna(axis=1, how="all")
+        if raw.empty or raw.shape[1] > 3 or len(raw) > 150:
+            continue
+        pairs = []
+        for row in raw.itertuples(index=False):
+            cells = [cell for cell in row if not (cell is None or (isinstance(cell, float) and math.isnan(cell)) or str(cell).strip() == "")]
+            if len(cells) >= 2 and isinstance(cells[0], str):
+                pairs.append((cells[0], cells[1]))
+        if len(pairs) < 2:
+            continue
+        metadata: dict[str, Any] = {}
+        notes: list[str] = []
+        for key, value in pairs:
+            normalized = normalize_text(key)
+            for pattern, target in _METADATA_KEYS:
+                if re.search(pattern, normalized) and target not in metadata:
+                    if target == "timezone":
+                        zone = _valid_timezone(value)
+                        if zone:
+                            metadata[target] = zone
+                    elif target in {"latitude", "longitude"}:
+                        number = _as_float(value)
+                        if number is not None:
+                            metadata[target] = number
+                    else:
+                        metadata[target] = str(value).strip()
+                    break
+            else:
+                if isinstance(value, str) and len(value) > 12:
+                    notes.append(f"{key}: {value}")
+        if metadata or notes:
+            if notes:
+                metadata["notes"] = notes[:12]
+            return metadata, str(sheet), notes
+    return {}, None, []
+
+
+def _classify_sheet(table: TableData, config: dict[str, Any], vocab: dict[str, Any]) -> str | None:
+    """Classify a sheet by content: operating, devices or event_log (None if unknown)."""
+    if table.frame.empty:
+        return None
+    mapping = map_table(table, config=config, vocab=vocab)
+    roles = set(mapping.role_to_columns)
+    has_time = (table.timestamp or {}).get("status") != "not_found"
+    if has_time and roles & _MEASUREMENT_SHEET_ROLES and len(table.frame) >= 2:
+        return "operating"
+    headers = [normalize_text(column) for column in table.original_columns]
+    has_start = any(re.search(r"\b(start|from|begin|began)\b", header) for header in headers)
+    has_end = any(re.search(r"\b(end|to|finish|until|stop)\b", header) for header in headers)
+    if has_start and has_end:
+        return "event_log"
+    device_mapping = map_table(table, config=config, vocab=vocab, context="devices")
+    device_roles = set(device_mapping.role_to_columns)
+    if "device_id" in device_roles and device_roles & {"capacity", "dc_capacity"}:
+        return "devices"
+    return None
+
+
+def _load_workbook_roles(
+    path: Path,
+    *,
+    config: dict[str, Any],
+    vocab: dict[str, Any],
+    timezone: str | None,
+    wanted: set[str],
+    metadata_sheet: str | None,
+) -> tuple[dict[str, TableData], list[str]]:
+    """Pick the operating sheet and companion device/event sheets of one workbook."""
+    name = _safe_name(path)
+    result = ingest_file(path, config=config, vocab=vocab, timezone=timezone)
+    if result.errors or not result.tables:
+        # Fall back to the regular loader so the structured error is preserved.
+        table, warnings = _load_path(path, config=config, vocab=vocab, timezone=timezone)
+        return {"operating": table}, warnings
+    chosen: dict[str, TableData] = {}
+    scores: dict[str, float] = {}
+    ignored: list[str] = []
+    for table in result.tables:
+        sheet = str(table.sheet_name)
+        if sheet == metadata_sheet:
+            continue
+        role = _classify_sheet(table, config, vocab)
+        if role is None:
+            if not table.frame.empty:
+                ignored.append(sheet)
+            continue
+        score = float(len(table.frame) * max(len(table.frame.columns), 1)) if role == "operating" else 1.0
+        if role not in chosen or score > scores[role]:
+            if role in chosen:
+                ignored.append(str(chosen[role].sheet_name))
+            chosen[role], scores[role] = table, score
+        else:
+            ignored.append(sheet)
+    if "operating" not in chosen:
+        table, warnings = _load_path(path, config=config, vocab=vocab, timezone=timezone)
+        return {"operating": table}, warnings
+    chosen = {role: table for role, table in chosen.items() if role == "operating" or role in wanted}
+    used = [f"'{table.sheet_name}' as {role.replace('_', ' ')}" for role, table in chosen.items()]
+    if metadata_sheet:
+        used.append(f"'{metadata_sheet}' as plant metadata")
+    warnings = [f"Workbook {name}: used sheet " + ", ".join(used) + "."]
+    if ignored:
+        warnings.append(f"Workbook {name}: ignored sheet(s) {', '.join(sorted(set(ignored)))}.")
+    return chosen, list(result.warnings) + warnings
+
+
 
 def _classify_directory(directory: Path) -> tuple[Path, dict[str, Path], list[str]]:
     files = [
@@ -558,6 +722,20 @@ def _load_inputs(
             details={"input_type": type(source).__name__},
         )
 
+    sheet_by_role = _sheet_selection(sheet_name)
+    operating_value = values.get("operating")
+    workbook_path = (
+        Path(operating_value)
+        if isinstance(operating_value, (str, Path)) and Path(operating_value).suffix.lower() == ".xlsx"
+        and Path(operating_value).exists() and "operating" not in sheet_by_role
+        else None
+    )
+    metadata_sheet = None
+    if workbook_path is not None:
+        workbook_metadata, metadata_sheet, _ = _scan_workbook_metadata(workbook_path)
+        for key, value in workbook_metadata.items():
+            metadata.setdefault(key, value)
+
     resolved_timezone, resolved_interval, resolved_plant, location = _resolve_metadata(
         metadata,
         timezone=timezone,
@@ -566,8 +744,18 @@ def _load_inputs(
     )
 
     tables: dict[str, TableData] = {}
+    if workbook_path is not None:
+        wanted = {role for role in ("devices", "event_log") if values.get(role) is None}
+        workbook_tables, workbook_warnings = _load_workbook_roles(
+            workbook_path, config=config, vocab=vocab, timezone=resolved_timezone,
+            wanted=wanted, metadata_sheet=metadata_sheet,
+        )
+        tables.update(workbook_tables)
+        warnings.extend(workbook_warnings)
+        if "operating" in workbook_tables:
+            warnings.extend(workbook_tables["operating"].warnings)
     for role, value in values.items():
-        if value is None:
+        if value is None or role in tables:
             continue
         try:
             table, table_warnings = _value_to_table(
@@ -576,7 +764,7 @@ def _load_inputs(
                 config=config,
                 vocab=vocab,
                 timezone=resolved_timezone,
-                sheet_name=sheet_name,
+                sheet_name=sheet_by_role.get(role),
             )
         except AnalysisError as exc:
             if role != "operating" and exc.code == "EMPTY_FILE":
@@ -622,7 +810,7 @@ def _load_inputs(
 
     devices = None
     if "devices" in tables:
-        device_mapping = map_table(tables["devices"], config=config, vocab=vocab)
+        device_mapping = map_table(tables["devices"], config=config, vocab=vocab, context="devices")
         devices = _canonicalize(
             tables["devices"],
             device_mapping,
@@ -631,6 +819,15 @@ def _load_inputs(
         )
         if "device_id" not in device_mapping.role_to_columns:
             devices.frame["device_id"] = "__plant__"
+        rating_columns = [column for column in ("rated_ac_power_kw", "rated_dc_power_kw") if column in devices.frame.columns]
+        if rating_columns:
+            unrated = devices.frame[rating_columns].isna().all(axis=1)
+            if unrated.any():
+                names = ", ".join(devices.frame.loc[unrated, "device_id"].astype(str).head(10))
+                warnings.append(f"Device rows without AC/DC ratings were not used as generating devices: {names}.")
+                devices.frame = devices.frame.loc[~unrated].reset_index(drop=True)
+        else:
+            warnings.append("The device file has no AC or DC rating columns; configured defaults are used.")
         warnings.extend(devices.warnings)
 
     forecast = None
@@ -646,7 +843,12 @@ def _load_inputs(
 
     event_log = None
     if "event_log" in tables:
-        event_log, event_warnings = _canonicalize_event_log(tables["event_log"])
+        event_log, event_warnings = _canonicalize_event_log(
+            tables["event_log"],
+            timezone=resolved_timezone,
+            date_order=(operating_table.timestamp or {}).get("day_month_order"),
+            config=config,
+        )
         warnings.extend(event_warnings)
 
     metadata = dict(metadata)
@@ -884,7 +1086,60 @@ def _canonicalize_wide(
     return pd.concat(parts, ignore_index=True)
 
 
-def _canonicalize_event_log(table: TableData) -> tuple[pd.DataFrame, list[str]]:
+_PLANT_WIDE_ASSETS = {"", "nan", "none", "null", "plant", "plant-wide", "plantwide", "site", "all", "__plant__"}
+
+
+def _normalize_asset(value: Any) -> str:
+    """Blank or plant-wide asset IDs become the PLANT sentinel; never NaN."""
+    if value is None or (isinstance(value, float) and math.isnan(value)) or value is pd.NA:
+        return "PLANT"
+    text = str(value).strip()
+    return "PLANT" if text.lower() in _PLANT_WIDE_ASSETS else text
+
+
+def _parse_event_times(
+    frame: pd.DataFrame,
+    start: str,
+    end: str,
+    *,
+    timezone: str | None,
+    date_order: str | None,
+    config: dict[str, Any],
+) -> tuple[pd.Series, pd.Series, list[str]]:
+    """Parse start/end with one shared, inferred date order (same detector as operating data)."""
+    warnings: list[str] = []
+
+    def as_text(value: Any) -> Any:
+        if isinstance(value, (pd.Timestamp, datetime)):
+            # Keep an explicit offset (e.g. +00:00) so aware times are not re-localized.
+            return value.isoformat(sep=" ") if value.tzinfo else value.strftime("%Y-%m-%d %H:%M:%S")
+        return value
+
+    combined = pd.concat([frame[start].map(as_text), frame[end].map(as_text)], ignore_index=True)
+    utc, _, info = _parse_timestamp_values(combined, None, header_text="event start end",
+                                           explicit_timezone=timezone, config=config)
+    if info.get("day_month_order") is None and date_order and not get_path(config, "time.date_order", None):
+        # Genuinely ambiguous event dates follow the order established for the operating data.
+        hinted = {**config, "time": {**(config.get("time") or {}), "date_order": date_order}}
+        utc, _, info = _parse_timestamp_values(combined, None, header_text="event start end",
+                                               explicit_timezone=timezone, config=hinted)
+        warnings.append(f"Event dates use the operating data's {date_order} date order.")
+    if utc.isna().all() and combined.notna().any():
+        reason = "; ".join(info.get("ambiguous_reasons") or []) or "timestamps could not be parsed"
+        warnings.append(f"Event times could not be normalized to UTC ({reason}).")
+    count = len(frame)
+    starts = pd.Series(utc.iloc[:count].to_numpy(), index=frame.index)
+    ends = pd.Series(utc.iloc[count:].to_numpy(), index=frame.index)
+    return starts, ends, warnings
+
+
+def _canonicalize_event_log(
+    table: TableData,
+    *,
+    timezone: str | None = None,
+    date_order: str | None = None,
+    config: dict[str, Any] | None = None,
+) -> tuple[pd.DataFrame, list[str]]:
     frame = table.frame
     warnings: list[str] = []
     if frame.empty:
@@ -914,16 +1169,23 @@ def _canonicalize_event_log(table: TableData) -> tuple[pd.DataFrame, list[str]]:
         warnings.append("Event log is missing start or end timestamps; event correlation is unavailable.")
         return pd.DataFrame(columns=["start_utc", "end_utc", "event_type", "asset_id", "description"]), warnings
 
+    starts, ends, parse_warnings = _parse_event_times(
+        frame, start, end, timezone=timezone, date_order=date_order, config=config or load_defaults()
+    )
+    warnings.extend(parse_warnings)
     output = pd.DataFrame(
         {
-            "start_utc": pd.to_datetime(frame[start], errors="coerce", utc=True),
-            "end_utc": pd.to_datetime(frame[end], errors="coerce", utc=True),
-            "event_type": frame[event_type].astype(str) if event_type else "event",
-            "asset_id": frame[asset].astype(str) if asset else "",
-            "description": frame[description].astype(str) if description else "",
+            "start_utc": starts,
+            "end_utc": ends,
+            "event_type": frame[event_type].map(lambda value: "event" if pd.isna(value) else str(value)) if event_type else "event",
+            "asset_id": frame[asset].map(_normalize_asset) if asset else "PLANT",
+            "description": frame[description].map(lambda value: "" if pd.isna(value) else str(value)) if description else "",
         }
     )
+    dropped = int(output[["start_utc", "end_utc"]].isna().any(axis=1).sum())
     output = output.dropna(subset=["start_utc", "end_utc"]).reset_index(drop=True)
+    if dropped:
+        warnings.append(f"{dropped} event row(s) had unparseable start or end times and were not used.")
     if output.empty:
         warnings.append("Event log contained no parseable event intervals.")
     return output, warnings
@@ -966,6 +1228,11 @@ def _merge_context(
                             "Device context is plant-level but has no scenario identifier; it was not merged."
                         )
                         keys = []
+                if keys == ["device_id"]:
+                    # Join on a normalized label so "INV1", "inv-1" and "Inv 1" match.
+                    frame["__device_key__"] = frame["device_id"].map(compact_text)
+                    device_frame["__device_key__"] = device_frame["device_id"].map(compact_text)
+                    keys = ["__device_key__"]
                 if keys:
                     missing = [column for column in device_cols if column not in frame.columns]
                     overlap = [column for column in device_cols if column in frame.columns]
@@ -994,6 +1261,8 @@ def _merge_context(
                                     )
             else:
                 warnings.append("Device context has no matching device identifier; it was not merged.")
+
+    frame = frame.drop(columns=["__device_key__"], errors="ignore")
 
     if weather is not None and not weather.frame.empty:
         weather_frame = weather.frame.copy()
@@ -1201,11 +1470,18 @@ def _forecast_energy(
 
     op_timestamps = pd.to_datetime(frame["timestamp"], errors="coerce", utc=True) if "timestamp" in frame.columns else pd.Series(dtype="datetime64[ns, UTC]")
     fc_timestamps = pd.to_datetime(forecast_frame["timestamp"], errors="coerce", utc=True)
+    # Each forecast row covers its own interval, derived from the forecast's own
+    # timestamps (an hourly forecast stays hourly even for 15-minute operating data).
+    forecast_frame = forecast_frame.assign(__fc_ts__=fc_timestamps).sort_values("__fc_ts__", kind="stable")
+    fc_seconds = _interval_seconds_series(forecast_frame, device_column=None, interval_minutes=None)
+    forecast_frame = forecast_frame.assign(__fc_seconds__=fc_seconds)
     if op_timestamps.notna().any():
         start = op_timestamps.min()
         end = op_timestamps.max()
-        forecast_frame = forecast_frame.loc[fc_timestamps.between(start, end)]
-        fc_timestamps = fc_timestamps.loc[forecast_frame.index]
+        fc_end = forecast_frame["__fc_ts__"] + pd.to_timedelta(forecast_frame["__fc_seconds__"].fillna(0), unit="s")
+        overlaps = (forecast_frame["__fc_ts__"] <= end) & ((fc_end > start) | (forecast_frame["__fc_ts__"] >= start))
+        forecast_frame = forecast_frame.loc[overlaps]
+    fc_timestamps = forecast_frame["__fc_ts__"]
     if forecast_frame.empty:
         return _unavailable_component(
             "forecast_energy_kwh",
@@ -1218,14 +1494,9 @@ def _forecast_energy(
         valid_fraction = float(values.notna().mean())
         total = _as_float(values.sum(min_count=1))
     elif "forecast_ac_power_kw" in forecast_frame.columns:
-        source = "forecast_ac_power_kw * actual_interval_duration"
+        source = "forecast_ac_power_kw * forecast_interval_duration"
         power = pd.to_numeric(forecast_frame["forecast_ac_power_kw"], errors="coerce")
-        seconds = _interval_seconds_series(
-            forecast_frame,
-            device_column=None,
-            interval_minutes=interval_minutes,
-        )
-        values = power * seconds / 3600.0
+        values = power * forecast_frame["__fc_seconds__"] / 3600.0
         valid_fraction = float(values.notna().mean())
         total = _as_float(values.sum(min_count=1))
     else:
@@ -1238,11 +1509,20 @@ def _forecast_energy(
         return _unavailable_component(source, "Forecast contains no valid energy values."), warnings
 
     coverage: float | None = None
-    op_unique = pd.Series(op_timestamps.dropna().unique()).sort_values()
-    fc_unique = pd.Series(fc_timestamps.dropna().unique()).sort_values()
+    op_unique = pd.Series(op_timestamps.dropna().unique()).sort_values().reset_index(drop=True)
     if len(op_unique):
-        if len(fc_unique):
-            coverage = float(op_unique.isin(fc_unique).mean())
+        intervals = forecast_frame.loc[forecast_frame["__fc_ts__"].notna(), ["__fc_ts__", "__fc_seconds__"]]
+        if len(intervals):
+            # An operating timestamp is covered when it falls inside a forecast interval.
+            matched = pd.merge_asof(
+                pd.DataFrame({"__op_ts__": op_unique}),
+                intervals.rename(columns={"__fc_ts__": "__op_ts__"}).assign(__start__=lambda f: f["__op_ts__"]),
+                on="__op_ts__", direction="backward",
+            )
+            inside = matched["__start__"].notna() & (
+                matched["__op_ts__"] < matched["__start__"] + pd.to_timedelta(matched["__fc_seconds__"].fillna(0), unit="s")
+            )
+            coverage = float(inside.mean())
         else:
             coverage = 0.0
     minimum_coverage = float(get_path(config, "integration.minimum_forecast_coverage", 0.95))
@@ -1476,7 +1756,7 @@ def _attribution(
             "poa_irradiance_w_m2": (alert.get("evidence") or {}).get("poa_irradiance_w_m2"),
             "peer_alert": "peer_output_deviation" in set(alert.get("checks") or []),
             "residual_alert": "residual_shortfall" in set(alert.get("checks") or []),
-            "cusum_alert": "residual_shortfall" in set(alert.get("checks") or []),
+            "cusum_alert": "cumulative_shortfall" in set(alert.get("checks") or []),
             "peer_z": (alert.get("evidence") or {}).get("peer_z"),
             "peer_median": (alert.get("evidence") or {}).get("peer_median"),
             "peer_mad": (alert.get("evidence") or {}).get("peer_mad"),

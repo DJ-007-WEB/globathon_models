@@ -28,8 +28,9 @@ def test_wide_layout_devices_and_utc(tmp_path):
     table = result.tables[0]
 
     assert table.layout["layout_type"] == "wide"
-    assert table.layout["devices"] == ["alpha", "beta"]
-    assert table.layout["column_devices"]["Array Alpha - AC Output (kW)"] == "alpha"
+    # Labels keep the source spelling so they can join to device-sheet identifiers.
+    assert table.layout["devices"] == ["Alpha", "Beta"]
+    assert table.layout["column_devices"]["Array Alpha - AC Output (kW)"] == "Alpha"
     assert table.timestamp["status"] == "resolved"
     assert table.timestamp["timezone"] == "UTC"
     assert table.timestamp["sampling_interval_seconds"] == 900.0

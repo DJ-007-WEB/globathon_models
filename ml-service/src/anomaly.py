@@ -233,6 +233,10 @@ def _persistence_scores(
     )
     slack = float(get_path(config, "anomaly.cusum_slack", 0.05))
     cusum_threshold = float(get_path(config, "anomaly.cusum_threshold", 0.50))
+    # A gap longer than this many median intervals resets the CUSUM so a score is
+    # never carried across missing data.
+    gap_factor = float(get_path(config, "anomaly.cusum_gap_reset_intervals", 3.0))
+    cusum_cap = cusum_threshold * float(get_path(config, "anomaly.cusum_cap_multiple", 4.0))
 
     if timestamp_key is None:
         timestamps = pd.Series(np.arange(len(frame)), index=index)
@@ -251,6 +255,12 @@ def _persistence_scores(
         running_peer = 0
         running_shortfall = 0
         running_cusum = 0.0
+        was_alerting = False
+        device_times = pd.to_datetime(rows["timestamp"], errors="coerce", utc=True) if timestamp_key else None
+        median_step = (
+            device_times.diff().dt.total_seconds().median() if device_times is not None and device_times.notna().sum() > 2 else None
+        )
+        last_assessed = None
         for position in rows.index:
             if bool(assessable.loc[position]):
                 if bool(peer_raw.loc[position]):
@@ -262,7 +272,24 @@ def _persistence_scores(
                     running_shortfall += 1
                 else:
                     running_shortfall = 0
-                running_cusum = max(0.0, running_cusum + max(0.0, value - slack))
+                current = device_times.loc[position] if device_times is not None else None
+                if (
+                    median_step and last_assessed is not None and current is not None and not pd.isna(current)
+                    and (current - last_assessed).total_seconds() > gap_factor * median_step
+                    and (current - last_assessed).total_seconds() < 6 * 3600
+                ):
+                    # Missing intervals (not just night) break the evidence chain.
+                    running_cusum = 0.0
+                # Standard one-sided CUSUM on the signed shortfall: normal or
+                # over-performing intervals reduce the score. The score is capped so
+                # one long fault cannot keep a device alerted for days afterwards.
+                running_cusum = min(max(0.0, running_cusum + value - slack), cusum_cap)
+                if was_alerting and value <= slack:
+                    running_cusum = 0.0  # the alert run completed on a normal interval
+                # Alert only while the current interval itself is short.
+                alerting = running_cusum >= cusum_threshold and value > slack
+                was_alerting = alerting
+                last_assessed = current
             else:
                 running_peer = 0
                 running_shortfall = 0
@@ -275,6 +302,7 @@ def _persistence_scores(
             residual_alert.loc[position] = running_shortfall >= persistence
             cusum_alert.loc[position] = (
                 bool(assessable.loc[position]) and running_cusum >= cusum_threshold
+                and float(shortfall.loc[position]) > slack
             )
     return peer_run, peer_alert, shortfall_run, residual_alert, cusum_score, cusum_alert
 
@@ -457,9 +485,12 @@ def detect_anomalies(
                 f"Output is {direction} the median of comparable peers for "
                 f"{int(peer_persistence.loc[position])} consecutive intervals."
             )
-        if bool(residual_alert.loc[position]) or bool(cusum_alert.loc[position]):
+        if bool(residual_alert.loc[position]):
             row_checks.append("residual_shortfall")
             row_messages.append("Sustained shortfall versus physics-expected output.")
+        elif bool(cusum_alert.loc[position]):
+            row_checks.append("cumulative_shortfall")
+            row_messages.append("Accumulated shortfall versus physics-expected output (CUSUM).")
         checks.append(row_checks)
         messages.append(" ".join(row_messages))
 

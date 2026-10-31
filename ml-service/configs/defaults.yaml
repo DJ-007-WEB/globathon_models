@@ -112,11 +112,17 @@ anomaly:
   residual_shortfall_threshold: 0.20
   cusum_slack: 0.05
   cusum_threshold: 0.50
+  # Reset the CUSUM after a data gap longer than this many median intervals.
+  cusum_gap_reset_intervals: 3.0
+  # Cap the CUSUM at threshold x this multiple so alerts end soon after a fault.
+  cusum_cap_multiple: 4.0
 
 # ---------------------------------------------------------------------------
 # Attribution rules
 # ---------------------------------------------------------------------------
 attribution:
+  # Event-type words that mark an outage, trip or curtailment (case-insensitive).
+  outage_event_terms: [curtail, outage, load_shed, trip, fault, shutdown, failure, breakdown, derate, disconnect, offline, grid_loss]
   low_output_ratio: 0.80
   adequate_irradiance_w_m2: 50.0
   night_sun_elevation_deg: -0.833

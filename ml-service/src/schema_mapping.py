@@ -80,6 +80,19 @@ UNIT_FAMILY_ROLES = {
     "forecast_power": "power",
     "forecast_poa": "irradiance",
 }
+# Roles measuring the same quantity as power or as energy; the unit decides which.
+UNIT_PAIRED_ROLES = {
+    "power_ac": "energy_interval",
+    "energy_interval": "power_ac",
+    "forecast_power": "forecast_energy",
+    "forecast_energy": "forecast_power",
+}
+# The generic "forecast" role is resolved to a concrete forecast role by unit.
+FORECAST_UNIT_ROLES = ("forecast_power", "forecast_energy", "forecast_poa")
+# Per-device columns in wide layouts that are not measurements but still belong
+# to one device (e.g. State_INV1).
+DEVICE_LABELLED_ROLES = MEASUREMENT_ROLES | {"capacity", "availability_status"}
+
 GENERIC_DEVICE_LABELS = {
     "device",
     "unit",
@@ -92,8 +105,22 @@ GENERIC_DEVICE_LABELS = {
     "asset",
     "source",
 }
+# Roles that only apply when the header says the value is a forecast/design value.
+ROLE_REQUIRED_TOKENS: dict[str, set[str]] = {
+    role: {"forecast", "forecasted", "predicted", "prediction", "expected", "design", "planned",
+           "projected", "projection", "estimated", "simulated", "budget", "target"}
+    for role in ("forecast", "forecast_energy", "forecast_power", "forecast_poa")
+}
+
 ROLE_NEGATIVE_TOKENS: dict[str, set[str]] = {
     "device_id": {
+        "type",
+        "category",
+        "kind",
+        "class",
+        "model",
+        "manufacturer",
+        "make",
         "efficiency",
         "power",
         "voltage",
@@ -114,14 +141,14 @@ ROLE_NEGATIVE_TOKENS: dict[str, set[str]] = {
         "flag",
     },
     "timestamp": {"interval", "duration", "elapsed", "minutes", "minute", "seconds", "hours"},
-    "power_ac": {"reactive", "apparent", "factor", "voltage", "current", "frequency", "efficiency", "energy", "yield", "temperature", "irradiance", "rated", "capacity", "nameplate", "installed", "nominal", "forecast", "predicted", "expected"},
-    "power_dc": {"reactive", "apparent", "factor", "voltage", "current", "frequency", "efficiency", "energy", "yield", "temperature", "irradiance", "rated", "capacity", "nameplate", "installed", "nominal", "forecast", "predicted", "expected"},
-    "energy_interval": {"power", "reactive", "factor", "voltage", "current", "frequency", "efficiency", "temperature", "irradiance", "cumulative", "total", "lifetime", "meter", "running", "aggregate", "forecast", "predicted", "expected"},
-    "energy_cumulative": {"power", "reactive", "factor", "voltage", "current", "frequency", "efficiency", "temperature", "irradiance", "interval", "period", "per", "forecast", "predicted", "expected"},
-    "irradiance_poa": {"power", "energy", "voltage", "current", "frequency", "temperature", "forecast", "predicted", "expected"},
-    "irradiance_ghi": {"power", "energy", "voltage", "current", "frequency", "temperature", "forecast", "predicted", "expected"},
-    "ambient_temperature": {"power", "energy", "voltage", "current", "frequency", "efficiency", "forecast", "predicted", "expected"},
-    "module_temperature": {"power", "energy", "voltage", "current", "frequency", "efficiency", "coefficient", "forecast", "predicted", "expected"},
+    "power_ac": {"reactive", "apparent", "factor", "voltage", "current", "frequency", "efficiency", "energy", "yield", "temperature", "irradiance", "rated", "capacity", "nameplate", "installed", "nominal", "forecast", "predicted", "expected", "design", "planned", "projected"},
+    "power_dc": {"reactive", "apparent", "factor", "voltage", "current", "frequency", "efficiency", "energy", "yield", "temperature", "irradiance", "rated", "capacity", "nameplate", "installed", "nominal", "forecast", "predicted", "expected", "design", "planned", "projected"},
+    "energy_interval": {"power", "reactive", "factor", "voltage", "current", "frequency", "efficiency", "temperature", "irradiance", "cumulative", "total", "lifetime", "meter", "running", "aggregate", "forecast", "predicted", "expected", "design", "planned", "projected"},
+    "energy_cumulative": {"power", "reactive", "factor", "voltage", "current", "frequency", "efficiency", "temperature", "irradiance", "interval", "period", "per", "forecast", "predicted", "expected", "design", "planned", "projected"},
+    "irradiance_poa": {"power", "energy", "voltage", "current", "frequency", "temperature", "forecast", "predicted", "expected", "design", "planned", "projected"},
+    "irradiance_ghi": {"power", "energy", "voltage", "current", "frequency", "temperature", "forecast", "predicted", "expected", "design", "planned", "projected"},
+    "ambient_temperature": {"power", "energy", "voltage", "current", "frequency", "efficiency", "forecast", "predicted", "expected", "design", "planned", "projected"},
+    "module_temperature": {"power", "energy", "voltage", "current", "frequency", "efficiency", "coefficient", "forecast", "predicted", "expected", "design", "planned", "projected"},
     "capacity": {"factor", "temperature", "irradiance", "voltage", "current", "dc"},
     "dc_capacity": {"factor", "temperature", "irradiance", "voltage", "current", "ac"},
     "forecast": {"energy", "power", "poa", "irradiance", "temperature", "ghi", "dni", "dhi"},
@@ -203,6 +230,9 @@ def score_header_roles(header: Any, vocab: dict[str, Any], config: dict[str, Any
                         best_alias = alias
         negative_tokens = ROLE_NEGATIVE_TOKENS.get(role, set())
         if best_score > 0 and negative_tokens.intersection(tokens):
+            best_score *= 0.25
+        required_tokens = ROLE_REQUIRED_TOKENS.get(role)
+        if best_score > 0 and required_tokens and not required_tokens.intersection(tokens):
             best_score *= 0.25
         if best_score > 0:
             candidates.append(
@@ -460,7 +490,38 @@ def _extract_device_label(header: Any, vocab: dict[str, Any]) -> str | None:
     label = "-".join(remaining) if any(re.search(r"\d", token) for token in remaining) else " ".join(remaining)
     if label in GENERIC_DEVICE_LABELS:
         return None
-    return label
+    # Keep the source spelling (INV1, not inv1) so labels join to device sheets.
+    pattern = r"[^A-Za-z0-9]*".join(re.escape(part) for part in re.split(r"[- ]", label) if part)
+    original = re.search(pattern, str(header), re.IGNORECASE) if pattern else None
+    return original.group(0) if original else label
+
+
+def _reconcile_role_with_unit(
+    role: str | None, unit: str | None, unit_text: str, vocab: dict[str, Any]
+) -> tuple[str | None, str | None, str | None]:
+    """Let an explicit unit decide between power and energy (and resolve generic forecasts).
+
+    A column named like a power series but labelled kWh is interval energy, and the
+    reverse; a generic "forecast" column becomes forecast power, energy or POA from
+    its unit. Without a unit token nothing changes, so magnitude is never used.
+    """
+    if role == "forecast":
+        for candidate in FORECAST_UNIT_ROLES:
+            candidate_unit, _ = infer_header_unit(unit_text, candidate, vocab)
+            if candidate_unit:
+                return candidate, candidate_unit, f"Generic forecast column resolved to {candidate} from its unit."
+        return role, unit, None
+    paired = UNIT_PAIRED_ROLES.get(role or "")
+    if paired is None:
+        return role, unit, None
+    own_family = UNIT_FAMILY_ROLES.get(role or "")
+    paired_unit, _ = infer_header_unit(unit_text, paired, vocab)
+    if paired_unit and own_family == "power" and unit in {None, *vocab.get("units", {}).get("energy", {}).get("aliases", {})}:
+        # e.g. "kWh" also contains "kW": an energy unit wins for a power-named column.
+        return paired, paired_unit, f"Unit {paired_unit} indicates {paired}, not {role}."
+    if paired_unit and unit is None:
+        return paired, paired_unit, f"Unit {paired_unit} indicates {paired}, not {role}."
+    return role, unit, None
 
 
 def detect_layout(
@@ -553,14 +614,17 @@ def detect_layout(
             (item["role"] for item in role_scores[str(column)] if item["score"] >= minimum),
             None,
         )
-        if top_role not in MEASUREMENT_ROLES and top_role != "capacity":
+        if top_role not in DEVICE_LABELLED_ROLES:
             continue
         label = _extract_device_label(original, vocab)
         if label:
             column_devices[str(column)] = label
-            labeled_columns.append(str(column))
-            labeled_devices.add(label)
+            if top_role in MEASUREMENT_ROLES:
+                labeled_columns.append(str(column))
+                labeled_devices.add(label)
 
+    # Only device-labelled measurements establish a wide layout; labelled status
+    # columns just follow their device.
     wide_detected = bool(labeled_columns) and (
         len(labeled_devices) >= 2 or len(labeled_columns) >= 2
     )
@@ -631,12 +695,35 @@ def _capacity_reference(
     return None
 
 
+# In a device/rating table, a power-family column is a nameplate rating.
+DEVICE_CONTEXT_ROLES = {"power_ac": "capacity", "power_dc": "dc_capacity"}
+TIME_SERIES_ROLES = MEASUREMENT_ROLES | {"timestamp", "availability_status"}
+
+
+def _context_candidates(candidates: list[dict[str, Any]], context: str | None) -> list[dict[str, Any]]:
+    if context != "devices":
+        return candidates
+    best: dict[str, dict[str, Any]] = {}
+    for item in candidates:
+        role = DEVICE_CONTEXT_ROLES.get(item["role"], item["role"])
+        if role in TIME_SERIES_ROLES:
+            continue
+        if role not in best or item["score"] > best[role]["score"]:
+            best[role] = {**item, "role": role}
+    return sorted(best.values(), key=lambda item: (-item["score"], item["role"]))
+
+
 def map_table(
     table: Any,
     config: dict[str, Any] | None = None,
     vocab: dict[str, Any] | None = None,
+    context: str | None = None,
 ) -> "MappingResult":
-    """Map every source column in an ingested table and build a manifest."""
+    """Map every source column in an ingested table and build a manifest.
+
+    ``context="devices"`` maps a rating table: power columns become AC/DC ratings
+    and time-series roles are not candidates.
+    """
 
     config = config or load_defaults()
     vocab = vocab or load_vocab()
@@ -651,6 +738,7 @@ def map_table(
     minimum_score = float(get_path(config, "mapping.minimum_candidate_score", 0.52))
     margin = float(get_path(config, "mapping.ambiguity_margin", 0.10))
     column_devices = layout.get("column_devices", {}) or {}
+    column_units = _table_attribute(table, "column_units", {}) or {}
 
     fields: list[dict[str, Any]] = []
     warnings: list[str] = []
@@ -661,7 +749,9 @@ def map_table(
             continue
         original = str(original_columns[index]) if index < len(original_columns) else internal
         series = frame[internal]
-        candidates = score_header_roles(original, vocab, config)
+        # Unit evidence: the header plus any units row captured during ingestion.
+        unit_text = f"{original} [{column_units[internal]}]" if column_units.get(internal) else original
+        candidates = _context_candidates(score_header_roles(original, vocab, config), context)
         generic_roles = _generic_ambiguity(original, config)
         warnings_for_field: list[str] = []
         unresolved_reasons: list[str] = []
@@ -705,7 +795,7 @@ def map_table(
                 else:
                     scored_candidates: list[dict[str, Any]] = []
                     for item in usable:
-                        candidate_unit, _ = infer_header_unit(original, item["role"], vocab)
+                        candidate_unit, _ = infer_header_unit(unit_text, item["role"], vocab)
                         value_adjustment, value_warnings = _value_evidence(series, item["role"], config)
                         score = item["score"] + (0.06 if candidate_unit else 0.0) + value_adjustment
                         scored_candidates.append(
@@ -720,6 +810,9 @@ def map_table(
                     top = scored_candidates[0]
                     role = top["role"]
                     unit = top["unit"]
+                    role, unit, reconcile_note = _reconcile_role_with_unit(role, unit, unit_text, vocab)
+                    if reconcile_note:
+                        warnings_for_field.append(reconcile_note)
                     conversion = _conversion_for(role, unit, vocab)
                     confidence = top["score"]
                     matched_alias = top["matched_alias"]
@@ -755,7 +848,7 @@ def map_table(
                         )
                         warnings_for_field.extend(validation_warnings)
                         if _role_unit_required(role, config) and unit is None:
-                            unresolved_reasons.append("Unit could not be established from header text.")
+                            unresolved_reasons.append("Unit could not be established from the header or units row.")
                         if validation_status == "fail" and role is not None:
                             unresolved_reasons.append("Field failed mapping validation.")
                             role = None

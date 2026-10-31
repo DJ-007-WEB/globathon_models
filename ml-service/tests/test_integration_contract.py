@@ -112,7 +112,8 @@ def test_t02_energy_is_derived_from_actual_interval_duration() -> None:
     assert result["actual_energy"] == pytest.approx(100.0)
     assert result["forecast_energy"] == pytest.approx(100.0)
     assert "actual_interval_duration" in result["energy"]["actual"]["source"]
-    assert "actual_interval_duration" in result["energy"]["forecast"]["source"]
+    # Forecast energy uses the forecast's own interval, never the operating interval.
+    assert "forecast_interval_duration" in result["energy"]["forecast"]["source"]
     assert result["actual_energy"] != pytest.approx(400.0)
 
 
