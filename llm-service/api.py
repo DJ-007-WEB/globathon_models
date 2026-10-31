@@ -61,13 +61,31 @@ def ready() -> dict:
     loaded = bool(service and service.is_loaded)
     adapter_exists = bool(service and service.adapter_path.is_dir()
                            and (service.adapter_path / "adapter_config.json").is_file())
+    inference_error = service.last_inference_error if service else None
     return {
-        "status": "ready" if loaded else ("not_ready" if service and service.last_load_error else "not_loaded"),
+        "status": "ready" if loaded and not inference_error else ("not_ready" if service and (service.last_load_error or inference_error) else "not_loaded"),
         "service": "solarsleuth-local-llm",
         "model_loaded": loaded,
         "adapter_available": adapter_exists,
         "model_name": service.resolved_model_name if service else MODEL_NAME,
         "load_error": service.last_load_error if service else None,
+        "last_inference_error": inference_error,
+    }
+
+
+@app.post("/warmup")
+async def warmup() -> dict:
+    """Load the configured base model and adapter before a demo or first request."""
+    service: LLMService = app.state.llm_service
+    try:
+        await run_in_threadpool(service._load)
+    except Exception as exc:
+        service.last_load_error = "Configured model or LoRA adapter could not be loaded."
+        raise HTTPException(status_code=503, detail="Local model warmup failed. Check the configured model and adapter.") from exc
+    return {
+        "status": "ready",
+        "model_loaded": service.is_loaded,
+        "model_name": service.resolved_model_name or MODEL_NAME or "adapter-configured-model",
     }
 
 
@@ -82,13 +100,15 @@ async def analyze(
         analysis: AnalysisResponse = await run_in_threadpool(service.analyze, request)
     except FileNotFoundError as exc:
         service.last_load_error = "Configured model or LoRA adapter could not be loaded."
+        service.last_inference_error = "Model or adapter files are unavailable."
         raise HTTPException(
             status_code=503,
             detail="Configured local model or LoRA adapter files are unavailable. Check ADAPTER_PATH and adapter metadata.",
         ) from exc
     except (ValueError, RuntimeError) as exc:
-        service.last_load_error = "Configured model or LoRA adapter could not be loaded."
+        service.last_inference_error = "The latest inference failed validation or generation."
         raise HTTPException(status_code=503, detail="Local model inference could not produce a valid explanation.") from exc
+    service.last_inference_error = None
     return AnalyzeResponse(
         request_id=request.request_id,
         plant_id=request.plant_id,
