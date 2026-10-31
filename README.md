@@ -171,6 +171,29 @@ A process health response is not proof the model is loaded. For live LLM inferen
 
 Never interpret an ML hypothesis as a confirmed equipment fault. Confirm findings against plant telemetry and qualified operators.
 
+## Saved-analysis assistant chat
+
+The browser loads a report-scoped conversation from
+`GET /api/v1/analyses/{request_id}/chat`. Follow-up questions can use the
+streaming transport:
+
+```http
+POST /api/v1/analyses/{request_id}/chat/stream
+Authorization: Bearer <browser-access-token>
+Content-Type: application/json
+
+{"question":"Why is measured output below expected energy?"}
+```
+
+The backend reuses the authenticated saved-analysis chat workflow, so the
+question and validated assistant answer are persisted against that report.
+The SSE stream sends `delta` events containing readable answer text and a
+final `done` event containing the structured answer. The local model still
+finishes generation and schema validation before these display chunks are
+sent; this is progressive browser delivery, not token-by-token model decoding.
+The frontend renders the stream with React elements (no HTML injection) and
+then switches to the structured explanation view.
+
 ## API documentation
 
 With a service running, open:
