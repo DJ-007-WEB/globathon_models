@@ -81,12 +81,12 @@ const listOrFallback = (items?: string[], fallback = "No details were returned f
   items?.length ? items : [fallback];
 
 function renderSafeMarkdown(source: string) {
-  const inline = (value: string) => value.split(/(\\*\\*[^*]+\\*\\*)/g).map((part, index) =>
+  const inline = (value: string) => value.split(/(\*\*[^*]+\*\*)/g).map((part, index) =>
     part.startsWith("**") && part.endsWith("**")
       ? <strong key={index}>{part.slice(2, -2)}</strong>
       : part
   );
-  return source.split(/\\r?\\n/).map((line, index) => {
+  return source.split(/\r?\n/).map((line, index) => {
     if (line.startsWith("### ")) return <h4 key={index}>{inline(line.slice(4))}</h4>;
     if (line.startsWith("- ")) return <div className="chat-markdown-list-item" key={index}>• {inline(line.slice(2))}</div>;
     if (!line.trim()) return <div className="chat-markdown-spacer" key={index}/>;
