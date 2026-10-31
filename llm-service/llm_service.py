@@ -68,6 +68,7 @@ class LLMService:
         self.tokenizer = None
         self.model = None
         self.last_load_error: str | None = None
+        self.last_inference_error: str | None = None
         self._load_lock = threading.Lock()
         self._generation_lock = threading.Lock()
 
