@@ -29,6 +29,42 @@ def test_ready_reports_degraded_when_services_are_offline(monkeypatch):
     assert response.json()["ml_service_reachable"] is False
 
 
+@pytest.mark.parametrize(
+    "llm_payload,expected_status",
+    [
+        ({"status": "not_loaded", "model_loaded": False}, "degraded"),
+        ({"status": "ready", "model_loaded": True}, "ready"),
+    ],
+)
+def test_ready_requires_loaded_llm_model(monkeypatch, llm_payload, expected_status):
+    class Response:
+        def __init__(self, payload):
+            self.payload = payload
+        def raise_for_status(self):
+            return None
+        def json(self):
+            return self.payload
+
+    class Client:
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *args):
+            return None
+        async def get(self, url):
+            if url.endswith(":8002/ready"):
+                return Response({"status": "ready"})
+            return Response(llm_payload)
+
+    monkeypatch.setattr(main.httpx, "AsyncClient", lambda **kwargs: Client())
+    monkeypatch.setattr(main, "ML_API_URL", "http://ml:8002")
+    monkeypatch.setattr(main, "LLM_API_URL", "http://llm:8000")
+    with TestClient(main.app) as client:
+        response = client.get("/ready")
+    assert response.status_code == 200
+    assert response.json()["status"] == expected_status
+    assert response.json()["llm_status"] == llm_payload["status"]
+
+
 def test_production_browser_access_requires_bearer(monkeypatch):
     monkeypatch.setattr(main, "ENVIRONMENT", "production")
     monkeypatch.setattr(main, "API_ACCESS_TOKEN", "test-access-token")
