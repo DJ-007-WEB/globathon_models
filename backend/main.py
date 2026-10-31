@@ -546,6 +546,31 @@ async def get_analysis_chat(request_id: str,
     ]}
 
 
+def _unavailable_llm_explanation(ml_result: dict) -> dict:
+    """Build a transparent, evidence-only explanation when LLM output is unusable."""
+    evidence = ml_result.get("evidence") if isinstance(ml_result.get("evidence"), list) else []
+    limitations = ml_result.get("limitations") if isinstance(ml_result.get("limitations"), list) else []
+    summary = ml_result.get("summary")
+    summary = (
+        str(summary).strip()
+        if isinstance(summary, str) and summary.strip()
+        else "The deterministic analysis completed, but its AI explanation could not be validated."
+    )
+    grounded_evidence = [str(item) for item in evidence[:8] if isinstance(item, str)]
+    return {
+        "summary": summary,
+        "observations": grounded_evidence,
+        "possible_causes": [],
+        "supporting_evidence": grounded_evidence,
+        "recommended_checks": [],
+        "limitations": list(dict.fromkeys(
+            [str(item) for item in limitations[:12] if isinstance(item, str)]
+            + ["The local LLM response could not be validated. The deterministic ML report remains authoritative."]
+        )),
+        "confidence": "insufficient_evidence",
+    }
+
+
 def _fallback_chat_answer(question: str, ml_result: dict, prior_explanation: dict | None = None) -> dict:
     """Answer from saved deterministic evidence when local LLM inference is unavailable."""
     question_text = question.strip().lower()
@@ -940,30 +965,11 @@ async def analyze_upload(
         except Exception:
             # A malformed or schema-invalid LLM response must never discard a valid
             # deterministic ML result. Keep the report usable and make the AI limitation explicit.
-            ml_evidence = ml_result.get("evidence") if isinstance(ml_result.get("evidence"), list) else []
-            ml_limits = ml_result.get("limitations") if isinstance(ml_result.get("limitations"), list) else []
-            ml_summary = ml_result.get("summary")
-            fallback_summary = (
-                str(ml_summary).strip()
-                if isinstance(ml_summary, str) and ml_summary.strip()
-                else "The deterministic analysis completed, but its AI explanation could not be validated."
-            )
             validated = AnalyzeResponse(
                 request_id=request_id,
                 plant_id=plant_id,
                 model="unavailable",
-                analysis={
-                    "summary": fallback_summary,
-                    "observations": [str(item) for item in ml_evidence[:8] if isinstance(item, str)],
-                    "possible_causes": [],
-                    "supporting_evidence": [str(item) for item in ml_evidence[:8] if isinstance(item, str)],
-                    "recommended_checks": [],
-                    "limitations": list(dict.fromkeys(
-                        [str(item) for item in ml_limits[:12] if isinstance(item, str)]
-                        + ["The local LLM response could not be validated. The deterministic ML report remains authoritative."]
-                    )),
-                    "confidence": "insufficient_evidence",
-                },
+                analysis=_unavailable_llm_explanation(ml_result),
                 ml_analysis=ml_result,
                 analysis_mode=ml_result.get("analysis_mode"),
             )
