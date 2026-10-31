@@ -937,8 +937,36 @@ async def analyze_upload(
                 ml_analysis=ml_result,
                 analysis_mode=ml_result.get("analysis_mode"),
             )
-        except Exception as exc:
-            raise HTTPException(status_code=502, detail="The local LLM returned an invalid explanation response.") from exc
+        except Exception:
+            # A malformed or schema-invalid LLM response must never discard a valid
+            # deterministic ML result. Keep the report usable and make the AI limitation explicit.
+            ml_evidence = ml_result.get("evidence") if isinstance(ml_result.get("evidence"), list) else []
+            ml_limits = ml_result.get("limitations") if isinstance(ml_result.get("limitations"), list) else []
+            ml_summary = ml_result.get("summary")
+            fallback_summary = (
+                str(ml_summary).strip()
+                if isinstance(ml_summary, str) and ml_summary.strip()
+                else "The deterministic analysis completed, but its AI explanation could not be validated."
+            )
+            validated = AnalyzeResponse(
+                request_id=request_id,
+                plant_id=plant_id,
+                model="unavailable",
+                analysis={
+                    "summary": fallback_summary,
+                    "observations": [str(item) for item in ml_evidence[:8] if isinstance(item, str)],
+                    "possible_causes": [],
+                    "supporting_evidence": [str(item) for item in ml_evidence[:8] if isinstance(item, str)],
+                    "recommended_checks": [],
+                    "limitations": list(dict.fromkeys(
+                        [str(item) for item in ml_limits[:12] if isinstance(item, str)]
+                        + ["The local LLM response could not be validated. The deterministic ML report remains authoritative."]
+                    )),
+                    "confidence": "insufficient_evidence",
+                },
+                ml_analysis=ml_result,
+                analysis_mode=ml_result.get("analysis_mode"),
+            )
         await _persist_analysis(account, filename, plant_id, validated)
         return validated
     finally:
