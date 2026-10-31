@@ -24,7 +24,7 @@ interface WorkspaceValue {
   getDetail: (requestId: string) => Promise<AnalysisDetail>;
   rememberDetail: (detail: AnalysisDetail) => void;
   ready: Ready | null;
-  readyState: "checking" | "ready" | "warming" | "offline" | "preview";
+  readyState: "checking" | "ready" | "warming" | "ai-error" | "ai-offline" | "offline" | "preview";
   refreshReady: () => Promise<void>;
 }
 
@@ -72,7 +72,12 @@ export function WorkspaceProvider({ mode, children }: { mode: WorkspaceMode; chi
     try {
       const value = await api.getReady();
       setReady(value);
-      setReadyState(value.ml_service_reachable && value.llm_api_reachable ? (value.model_loaded && value.llm_status !== "not_ready" ? "ready" : "warming") : "offline");
+      setReadyState(
+        !value.ml_service_reachable ? "offline"
+          : !value.llm_api_reachable ? "ai-offline"
+          : value.model_loaded && value.llm_status === "ready" ? "ready"
+          : value.llm_status === "not_ready" ? "ai-error"
+          : "warming");
     } catch {
       setReady(null); setReadyState("offline");
     }

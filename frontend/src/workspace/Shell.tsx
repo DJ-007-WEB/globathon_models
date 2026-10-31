@@ -50,12 +50,23 @@ function Sidebar({ collapsed, onToggle, mobileOpen, onClose }: { collapsed: bool
 function StatusPill() {
   const { readyState, ready, refreshReady } = useWorkspace();
   const map = {
-    checking: ["neutral", "Checking services"], ready: ["success", "Services ready"], warming: ["warning", "AI warming up"],
-    offline: ["danger", "Service offline"], preview: ["info", "Synthetic preview"],
+    checking: ["neutral", "Checking services"], ready: ["success", "Services ready"], warming: ["warning", "AI model loading"],
+    "ai-error": ["danger", "AI model error"], "ai-offline": ["danger", "AI service offline"],
+    offline: ["danger", "ML service offline"], preview: ["info", "Synthetic preview"],
   } as const;
   const [tone, label] = map[readyState];
-  const title = ready ? `ML ${ready.ml_service_reachable ? "reachable" : "unreachable"} · LLM ${ready.llm_api_reachable ? "reachable" : "unreachable"}${ready.llm_status ? ` (${ready.llm_status})` : ""}` : label;
+  const title = ready ? `ML ${ready.ml_service_reachable ? "reachable" : "unreachable"} · LLM ${ready.llm_api_reachable ? "reachable" : "unreachable"}${ready.llm_status ? ` (${ready.llm_status})` : ""} · model ${ready.model_loaded ? "loaded" : "not loaded"}${ready.llm_error ? ` · ${ready.llm_error}` : ""} — click to re-check` : `${label} — click to re-check`;
   return <button type="button" className={`pill pill-${tone} status-pill`} title={title} onClick={() => void refreshReady()}>{label}</button>;
+}
+
+function AiNotice() {
+  const { readyState, ready } = useWorkspace();
+  if (readyState === "ready" || readyState === "checking") return null;
+  const text = readyState === "offline" ? "The ML service is unreachable, so uploads will fail. Start it (port 8002) and click the status pill to re-check."
+    : readyState === "ai-offline" ? "The local AI service (port 8000) is unreachable. Reports still run, but explanations will be the evidence-only fallback until it is started."
+    : readyState === "ai-error" ? `The local AI model reported an error${ready?.llm_error ? `: ${ready.llm_error}` : ""}. Reports use the evidence-only fallback until the next successful generation.`
+    : "The local AI model is not loaded yet. It loads in the background at startup, or on the first upload (this can take a few minutes on CPU).";
+  return <div className={`ws-banner ws-banner-${readyState === "warming" ? "warn" : "danger"}`} role="status"><Icon name="alert" size={16} />{text}</div>;
 }
 
 function AccountMenu() {
@@ -136,6 +147,7 @@ function ShellFrame() {
       <Sidebar collapsed={collapsed} onToggle={toggle} mobileOpen={mobileOpen} onClose={() => setMobileOpen(false)} />
       <div className="ws-body">
         <Topbar onMenu={() => setMobileOpen(true)} />
+        {mode === "live" && <AiNotice />}
         {mode === "preview" && <div className="ws-banner"><Icon name="flask" size={16} />Synthetic data — generated scenarios processed by the real ML pipeline. No AI narrative; nothing here describes a real plant.</div>}
         <main id="ws-main" className="ws-main app-page-enter" key={pathname}><Outlet /></main>
       </div>

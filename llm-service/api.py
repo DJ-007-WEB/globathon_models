@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hmac
 import os
+import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -27,7 +28,19 @@ ADAPTER_MODE = os.getenv("LLM_ADAPTER_MODE", "auto").strip().lower()
 TIME_BUDGET_SECONDS = float(os.getenv("LLM_TIME_BUDGET_SECONDS", "240"))
 
 
-WARMUP_ON_STARTUP = os.getenv("LLM_WARMUP_ON_STARTUP", "").strip().lower() in {"1", "true", "yes", "on"}
+# Load the model in the background at startup (default on) so the first upload does not
+# wait for it and /ready reports the real state. Set LLM_WARMUP_ON_STARTUP=false to disable.
+WARMUP_ON_STARTUP = os.getenv("LLM_WARMUP_ON_STARTUP", "true").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _background_load(service: LLMService) -> None:
+    service.loading = True
+    try:
+        service._load()
+    except Exception as exc:  # surfaced through /ready, never crashes the service
+        service.last_load_error = f"Model load failed: {type(exc).__name__}: {exc}"[:400]
+    finally:
+        service.loading = False
 
 
 @asynccontextmanager
@@ -42,15 +55,17 @@ async def lifespan(app: FastAPI):
         adapter_mode=ADAPTER_MODE,
         time_budget_seconds=TIME_BUDGET_SECONDS,
     )
-    # Warm the model before serving production traffic. Local demo users can
-    # opt in without making lightweight development/test startup expensive.
-    if ENVIRONMENT == "production" or WARMUP_ON_STARTUP:
+    app.state.llm_service.loading = False
+    if ENVIRONMENT == "production":
+        # Production waits for the model before serving traffic.
         try:
             await run_in_threadpool(app.state.llm_service._load)
         except Exception:
             app.state.llm_service.last_load_error = (
                 "Startup warmup failed. Check the configured base model and complete PEFT adapter."
             )
+    elif WARMUP_ON_STARTUP:
+        threading.Thread(target=_background_load, args=(app.state.llm_service,), daemon=True).start()
     yield
 
 
@@ -84,7 +99,9 @@ def ready() -> dict:
                            and (service.adapter_path / "adapter_config.json").is_file())
     inference_error = service.last_inference_error if service else None
     return {
-        "status": "ready" if loaded and not inference_error else ("not_ready" if service and (service.last_load_error or inference_error) else "not_loaded"),
+        "status": "ready" if loaded and not inference_error else (
+            "loading" if service and getattr(service, "loading", False)
+            else "not_ready" if service and (service.last_load_error or inference_error) else "not_loaded"),
         "service": "solarsleuth-local-llm",
         "model_loaded": loaded,
         "adapter_available": adapter_exists,
@@ -105,6 +122,7 @@ async def warmup() -> dict:
     except Exception as exc:
         service.last_load_error = "Configured model or LoRA adapter could not be loaded."
         raise HTTPException(status_code=503, detail="Local model warmup failed. Check the configured model and adapter.") from exc
+    service.last_load_error = None
     return {
         "status": "ready",
         "model_loaded": service.is_loaded,

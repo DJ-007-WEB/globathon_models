@@ -329,3 +329,5 @@ code { font-family: var(--font-mono); font-size: .9em; background: var(--surface
   .ws-main { padding: 0; }
   .ws-card, .kpi { break-inside: avoid; box-shadow: none; }
 }
+.ws-banner-warn { background: var(--warning-soft); color: var(--warning) !important; }
+.ws-banner-danger { background: var(--danger-soft); color: var(--danger) !important; }

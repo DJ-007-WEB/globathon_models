@@ -2,7 +2,7 @@
 import { apiFetch } from "./client";
 import type { AnalysisDetail, AnalysisList, AuthResponse, ChatAnswer, ChatMessage, Plant, Ready, User } from "../types/backend";
 
-export const getReady = () => apiFetch<Ready>("/ready", { auth: false, timeoutMs: 8000 });
+export const getReady = () => apiFetch<Ready>("/ready", { auth: false, timeoutMs: 15000 });
 
 export const register = (payload: { email: string; password: string; name: string; business_name: string }) =>
   apiFetch<AuthResponse>("/api/v1/auth/register", { method: "POST", body: JSON.stringify(payload), auth: false, timeoutMs: 15000 });

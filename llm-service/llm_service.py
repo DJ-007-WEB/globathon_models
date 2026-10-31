@@ -124,6 +124,7 @@ class LLMService:
         self.adapter_mode = adapter_mode if adapter_mode in {"auto", "adapter", "base"} else "auto"
         # Stop starting new attempts after this many seconds (backend waits 300 s).
         self.time_budget_seconds = time_budget_seconds
+        self.loading = False
         self.last_generation_path: str | None = None
         self.last_prompt_tokens: int | None = None
         self.last_raw_output: str | None = None

@@ -1013,7 +1013,7 @@ async def ready() -> dict:
     llm_model_name = None
     llm_adapter_available = False
     llm_prompt_tokens = None
-    async with httpx.AsyncClient(timeout=httpx.Timeout(3.0, connect=1.0), trust_env=False) as client:
+    async with httpx.AsyncClient(timeout=httpx.Timeout(10.0, connect=2.0), trust_env=False) as client:
         try:
             response = await client.get(f"{ML_API_URL}/ready")
             response.raise_for_status()
