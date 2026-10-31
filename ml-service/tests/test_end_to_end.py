@@ -70,8 +70,8 @@ def test_enriched_four_inverter_csv_runs_through_full_operating_pipeline(tmp_pat
     assert result["interval"]["device_count"] == 4
     assert result["interval"]["row_count"] == 8
     assert result["interval"]["sampling_interval_seconds"] == 900.0
-    assert result["actual_energy"]["value_kwh"] == pytest.approx(
+    assert result["actual_energy"] == pytest.approx(
         sum(row[4] for row in records), abs=1e-6
     )
-    assert result["expected_energy"]["value_kwh"] is not None
+    assert result["expected_energy"] is not None
     assert result["unresolved_fields"] == []
