@@ -171,3 +171,30 @@ def test_ml_validation_error_is_preserved_for_the_upload_user(monkeypatch):
     assert rejected.value.status_code == 422
     assert "Upload one scenario at a time" in rejected.value.detail
     assert "scenario_id" in rejected.value.detail
+
+def test_upload_forwards_optional_context_datasets_to_ml(monkeypatch):
+    captured = {}
+
+    async def fake_ml(content, filename, **kwargs):
+        captured["operating"] = filename
+        captured["context_files"] = kwargs.get("context_files", {})
+        return VALID_ML
+
+    async def fake_llm(payload):
+        return llm_response(payload)
+
+    monkeypatch.setattr(main, "_run_ml", fake_ml)
+    monkeypatch.setattr(main, "_post_llm", fake_llm)
+    with TestClient(main.app) as client:
+        response = client.post(
+            "/api/v1/analyze/upload",
+            files={
+                "file": ("operating.csv", b"timestamp,ac_power_kw\\n2026-10-30T10:00:00Z,12.5\\n", "text/csv"),
+                "forecast_file": ("forecast.csv", b"timestamp,forecast_energy_kwh\\n2026-10-30T10:00:00Z,15\\n", "text/csv"),
+                "weather_file": ("weather.csv", b"timestamp,poa_irradiance_w_m2\\n2026-10-30T10:00:00Z,800\\n", "text/csv"),
+            },
+        )
+    assert response.status_code == 200, response.text
+    assert captured["operating"] == "operating.csv"
+    assert set(captured["context_files"]) == {"forecast_file", "weather_file"}
+    assert captured["context_files"]["forecast_file"][0] == "forecast.csv"
