@@ -1,0 +1,40 @@
+{
+ "plants": [
+  {
+   "plant_id": "synthetic-plant-a",
+   "name": "Synthetic plant A",
+   "location": null,
+   "capacity_kw": null,
+   "timezone": "UTC",
+   "created_at": null,
+   "updated_at": null
+  }
+ ],
+ "analyses": [
+  {
+   "request_id": "preview-001",
+   "plant_id": "synthetic-plant-a",
+   "filename": "synthetic_scenario_001.csv",
+   "analysis_status": "success",
+   "analysis_mode": "full",
+   "created_at": "2026-01-14T15:05:00+00:00"
+  },
+  {
+   "request_id": "preview-002",
+   "plant_id": "synthetic-plant-a",
+   "filename": "synthetic_scenario_002.csv",
+   "analysis_status": "success",
+   "analysis_mode": "full",
+   "created_at": "2026-01-12T09:20:00+00:00"
+  },
+  {
+   "request_id": "preview-003",
+   "plant_id": "synthetic-plant-a",
+   "filename": "synthetic_scenario_003.csv",
+   "analysis_status": "success",
+   "analysis_mode": "full",
+   "created_at": "2026-01-09T11:40:00+00:00"
+  }
+ ],
+ "note": "Synthetic scenarios processed by the real SolarSleuth ML pipeline."
+}

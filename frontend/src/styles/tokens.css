@@ -1,0 +1,130 @@
+/* SolarSleuth design tokens. Values sampled from the reference recording (estimated) and
+   docs/RECONSTRUCTION_PLAN.md §5. Components use the semantic layer, never raw hex. */
+:root {
+  color-scheme: light;
+
+  /* palette */
+  --forest-950: #0b150f;
+  --forest-900: #112116;
+  --forest-850: #15291b;
+  --forest-800: #1b3323;
+  --forest-700: #24442f;
+  --royal-800: #2e2a7e;
+  --royal-700: #312b8d;
+  --royal-600: #3d37a6;
+  --royal-500: #4f49c4;
+  --footer: #26277a;
+  --navy-900: #14142e;
+  --lime-300: #d6f77a;
+  --lime-400: #c4f03c;
+  --lime-500: #a6d61f;
+  --green-700: #2f7a34;
+  --green-600: #3b9443;
+  --mist: #f6f6f4;
+  --paper: #ffffff;
+  --ink-900: #14161c;
+  --slate-700: #3c4350;
+  --slate-600: #535b68;
+  --slate-500: #6b7280;
+  --line: #e6e7e3;
+  --line-strong: #d4d6d0;
+
+  /* semantic (light) */
+  --bg: var(--mist);
+  --surface: var(--paper);
+  --surface-2: #f1f2ef;
+  --surface-3: #eceee9;
+  --text: var(--ink-900);
+  --text-muted: var(--slate-600);
+  --text-subtle: var(--slate-500);
+  --heading: var(--royal-800);
+  --heading-strong: var(--ink-900);
+  --link: var(--royal-700);
+  --border: var(--line);
+  --border-strong: var(--line-strong);
+  --control-border: #c9ccc5;
+  --primary: var(--royal-700);
+  --primary-hover: var(--royal-600);
+  --primary-ink: #ffffff;
+  --accent: var(--lime-400);
+  --accent-ink: var(--forest-950);
+  --eyebrow: var(--green-700);
+  --focus: var(--royal-500);
+  --figure: var(--royal-700);
+  --success: #2e7d32;  --success-soft: #e9f7e6;
+  --warning: #8a5a00;  --warning-soft: #fdf3dc;
+  --danger: #b42318;   --danger-soft: #fdecea;
+  --info: #312b8d;     --info-soft: #eeedfb;
+  --banner: #f3f6e4;
+
+  /* chart */
+  --chart-forecast: #c9cbd4;
+  --chart-expected: #9a9fb2;
+  --chart-actual: var(--lime-400);
+  --chart-weather: #f2b705;
+  --chart-plant: #8b5cf6;
+  --cat-data: #8b5cf6; --cat-outage: #3b82f6; --cat-sensor: #db2777;
+  --cat-peer: #0d9488; --cat-lowout: #b45309; --cat-unresolved: #64748b;
+
+  /* shape */
+  --r-xs: 6px; --r-sm: 10px; --r-md: 14px; --r-lg: 18px; --r-xl: 24px; --r-2xl: 28px; --r-pill: 999px;
+  --shadow-sm: 0 1px 2px rgba(20, 22, 28, 0.06);
+  --shadow-card: 0 1px 2px rgba(20, 22, 28, 0.04), 0 8px 24px rgba(20, 22, 28, 0.06);
+  --shadow-card-hover: 0 2px 4px rgba(20, 22, 28, 0.05), 0 18px 40px rgba(20, 22, 28, 0.12);
+  --shadow-float: 0 24px 60px rgba(8, 14, 10, 0.35);
+
+  /* layout */
+  --container: 1110px;
+  --container-wide: 1240px;
+  --gutter: clamp(16px, 4vw, 32px);
+  --header-h: 60px;
+  --sidebar-w: 218px;
+  --sidebar-rail: 68px;
+  --topbar-h: 56px;
+
+  /* type */
+  --font-display: "Manrope", "Inter", system-ui, sans-serif;
+  --font-body: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+
+  /* motion */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --dur-fast: 150ms; --dur-base: 240ms; --dur-slow: 520ms; --dur-reveal: 700ms;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0b130e;
+  --surface: #111c15;
+  --surface-2: #16241b;
+  --surface-3: #1c2e22;
+  --text: #e8efe9;
+  --text-muted: #a8b4ab;
+  --text-subtle: #8c998f;
+  --heading: #ffffff;
+  --heading-strong: #ffffff;
+  --link: var(--lime-400);
+  --border: rgba(255, 255, 255, 0.09);
+  --border-strong: rgba(255, 255, 255, 0.16);
+  --control-border: #3a4c40;
+  --primary: var(--lime-400);
+  --primary-hover: var(--lime-300);
+  --primary-ink: var(--forest-950);
+  --eyebrow: var(--lime-400);
+  --focus: var(--lime-400);
+  --figure: #c9c6ff;
+  --success: #7bd88f; --success-soft: #133220;
+  --warning: #f2c16d; --warning-soft: #3a2c17;
+  --danger: #ff9b8f;  --danger-soft: #44241f;
+  --info: #b9b5ff;    --info-soft: #1d1d44;
+  --banner: #172414;
+  --chart-forecast: #4b5463;
+  --chart-expected: #7d879a;
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3), 0 10px 28px rgba(0, 0, 0, 0.28);
+  --shadow-card-hover: 0 2px 4px rgba(0, 0, 0, 0.35), 0 18px 40px rgba(0, 0, 0, 0.4);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root { --dur-fast: 1ms; --dur-base: 1ms; --dur-slow: 1ms; --dur-reveal: 1ms; }
+}

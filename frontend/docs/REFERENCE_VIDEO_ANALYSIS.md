@@ -1,0 +1,48 @@
+# Reference video analysis
+
+Source: `WhatsApp_Video_2026-10-31_at_3.49.26_PM_1.mp4` — 151.7 s, 2228 × 1060, 30 fps, screen recording of a
+SolarSleuth reference build (browser at roughly 1400 CSS px wide). Reviewed as 152 frames at 1 s spacing
+(contact sheets) plus ~40 full-resolution stills. **Labels:** O = directly observed, E = estimated from
+pixels/proportions, I = inferred from a change between frames, N = not observable (sampling cannot show it).
+A floating "Edit" toolbar and the browser status bar belong to the recording tool, not the product.
+
+## Timestamped inventory
+
+| Time | Page / section | Visual elements | Layout | Colours | Typography | Interaction / animation |
+|---|---|---|---|---|---|---|
+| 0:00–0:03 | Home · "The operational problem" | Green eyebrow, 3-line royal H2, paragraph right; 4-up stat strip ("2", "25 MiB", "ML first", "0") with short lime bars | 2 columns (5/7); stats in one bordered white card split by 1 px rules | White bg, royal-indigo H2/figures (O), lime bars (O) | Bold geometric sans H2 ~38 px (E), figures ~30 px | Hovered stat cell gets a pale grey fill (O, 0:01–0:04) |
+| 0:04–0:16 | Home · "The analysis pipeline" | Left half: dark switchgear photo with yellow warning sign, "HOW IT WORKS" + 3-line heading bottom-left. Right: H2, Pause/Play pill, 7 numbered nodes on a rail, stage tag pill, H3, paragraph, In/Out chips with dotted connector, 4 spec columns, source-file link (`attribution.py`) | ~42/58 split; photo fades into flat deep green | Deep forest `#0f2416`-ish (E), lime active node + filled rail segments (O) | H2 ~32 px white; stage title ~28 px | Auto-advance through stages 1→7 (O); Pause toggles to Play (O 0:07); clicking a node jumps (O 0:10–0:12); completed rail segments turn lime (O); content fades in (O 0:15 faded frame) |
+| 0:17–0:22 | Home · Capabilities | Eyebrow, 2-line royal H2, "View all capabilities →" link; 3 × 2 white cards: dark icon tile, index "01–06", title, body, 3 bullets, lime bar | 3 columns, 24 px gaps (E) | Mist page `#f5f6f4` (E), white cards | Card title ~16 px semibold | Cards reveal staggered on scroll (O 0:18 partially faded third card); hover shows a photo strip at top of card and royal underline (O 0:19, 0:22) |
+| 0:23–0:26 | Home · Principles | Full-bleed dark dusk photograph, lime eyebrow, white 2-line H2, lead, 3 glass cards with index, title, lime bar, body | Container-aligned; cards 3-up | Near-black green scrim | H2 ~32 px | Card hover raises and brightens (O 0:24–0:26) |
+| 0:27–0:30 | Home · "One report, read four ways" | Large rounded photo left, eyebrow + royal H2 right, 4 audience rows (label + description) with dividers | 46/54 split | White | Labels semibold 14 px | Rows reveal sequentially (O 0:27 faded) |
+| 0:30–0:35 | Home · FAQ | Left: eyebrow, royal H2 "What teams ask before uploading", lead, link. Right: accordion with royal left rule on open item, × / + icons | 4/8 split | Mist | Question 15 px semibold | One item open at a time; answer fades (O 0:31 faded text) |
+| 0:35–0:38 | Home · "What SolarSleuth will not claim" | Two rows of navy quote cards (quote glyph, statement, lime source label), Pause pill | Full-bleed rows | Navy `#141433` (E), lime label | Statement 15 px | Rows scroll in opposite directions (O offsets differ); hovered card lifts, glyph turns lime (O 0:37) |
+| 0:38–0:40 | Home · CTA | Royal 2-line H2 + paragraph left; right card "Start with your own export — or ours", royal button + text link | 55/45 | White; card mist with shadow | | |
+| 0:40–0:42 | Footer | Logo, 3-line blurb, 3 link columns (PRODUCT, METHOD, COMPANY), legal row ("© 2026 SolarSleuth. Photography via Unsplash." / "Hypotheses are not confirmed faults. Synthetic demo data is labelled as such.") | 4 columns | Royal/indigo `#28298a`-ish (E) | Column headings lime uppercase letter-spaced | Link hover underline (I) |
+| 0:43–0:45 | Home · Hero (scrolled back to top) | Aerial PV rows on green grass with road/railway; lime rule + eyebrow "SOLAR PV PERFORMANCE ANALYTICS"; H1 3 lines, last line lime; lead; lime "Create a workspace →" + outlined "See the product demo"; tech line; glass "Energy waterfall" card with 5 bars and "Synthetic example" pill | Text left ~45 %, card right-bottom | Dark green scrim left-heavy | H1 ~52 px (E), tight | Header nav item hover underline (O); scroll-progress line N |
+| 0:46–0:51 | Capabilities page | Dark photo hero "Six capabilities, one auditable report"; then alternating rows: rounded photo + icon tile, H3, paragraph, check-list; dividers between rows | 50/50 alternating | White | H3 ~26 px | Active nav item gets lime underline (O) |
+| 0:51–0:52 | Footer (Capabilities) | as 0:40 | | | | |
+| 0:53–0:58 | Trust page | Top-down PV hero "Evidence first, and honest about the rest"; 3 principle columns; "What it can and cannot determine" two lists (✓ / ✗); "What happens to an uploaded file" photo + fact rows (2, 25 MiB, ML first, 0, Tokens) | | Mist/white bands | | |
+| 0:59–1:07 | Resources page | Dusk PV hero "Know what to upload, and how it is read"; left vertical tab list (Data requirements, How it works, Method and limits) active = dark pill with arrow; right document card with "DOCUMENT n OF 3", title, lime-bullet list; "Frequently asked" accordion | 3/9 | | | Tab switch swaps document (O) |
+| 1:08–1:20 | About page | Aerial hero "Built for the gap between forecast and delivery"; "Why it matters" two-column text; audience grid (4); "will not claim" marquee; footer | | | | Page transition fades through white (O 1:08) |
+| 1:20–1:27 | Contact page | Aerial hero "Start a conversation with your own data"; three white cards overlapping hero bottom (Try the workspace / See it without an account / Technical questions) with icon chip and link; note "This website does not collect enquiries through a form." | 3 columns | | | Page transition blur-fade (O 1:20 blurred hero) |
+| 1:28–1:31 | Auth modal | Split modal: left dark green panel with logo, H3 "Explain every kilowatt-hour…", 3 check bullets, footer note; right: "Create your workspace", segmented Sign in / Create account, Your name + Business name, Work email, Password, royal "Create account" button, divider, "Explore the workspace with synthetic data" link | ~48/52 | Backdrop blurred page (O) | | Modal fades/scales in (I) |
+| 1:32–1:35 | Trust page again, then "Open workspace" | | | | | Hover on lime CTA (O) |
+| 1:36–1:41 | Workspace · Overview (synthetic preview) | Sidebar (logo, Overview, Upload & Analyse, Reports, AI Explanation, PLANT DATA: Plants, Validation Lab; "Synthetic preview" note card; Collapse); top bar (breadcrumb, plant selector, status pill, theme icon, avatar); lime-tint "Synthetic data." banner; eyebrow + H1 "Plant performance overview"; All reports / New analysis buttons; meta row; latest analysis block with chips; 4 KPI cells (Forecast, Expected, Actual, Deviation — deviation red); "Where the energy went" + "Needs attention" | Sidebar ~218 px at 1400 (E) | Sidebar `#13241a` (E); active item lighter fill + lime left bar + lime icon | KPI figures royal ~22 px | |
+| 1:42–1:44 | Workspace · Reports | Search input, status chips (All statuses, Success, Partial, Invalid input, Error), "Showing current plant · show all plants", table (Dataset, Plant, Mode, Analysed, Status, chevron), "2 of 2 reports" | | | | |
+| 1:45–1:52 | Workspace · Upload & Analyse | Eyebrow "NEW ANALYSIS", H1, amber notice (uploads disabled in preview), "01 Operating data file" dashed drop zone; right column "What a good export contains" + "What happens next"; "02 Analysis context": Plant select, Analysis mode as 3 selectable cards (Auto/Full/Snapshot), Timezone, Interval minutes; disabled "Analyse file" + hint | 2/3 + 1/3 | Selected mode card royal border + tint | | Mode cards selectable (O) |
+| 1:53–2:00 | Workspace · AI Explanation | H1 "Report-grounded explanation", report select; left ML summary card (royal left rule, "Deterministic ML result" chip, figures, data quality chip, "Open the full report"); right: notice "No AI explanation for this report", "Follow-up questions" with suggested prompt chips, disabled composer | 4/8 | | | Report select changes figures (O 1:56) |
+| 2:01–2:05 | Workspace · Plants | List card (avatar "SY", name, id, check) + detail (Identifier, Location, Capacity, Timezone, note), "Analysis history" rows, disabled "Register plant" in preview | 5/7 | | | |
+| 2:05–2:13 | Workspace · Validation Lab | "Data-quality inspection", report select, overall status card (shield icon, "Warning", description), stacked colour bar with counts (Passed, Warnings, Failed, Not checked), Rows/Devices/Sampling; "Checks" list with filter chips and per-check status pills; right: Missing required fields, Unresolved source fields (code chips), Limitations | 7/5 | Status bar green/amber/red | | Sidebar collapses to icon rail (O 2:09) |
+| 2:13–2:16 | Workspace · dark theme | Same Validation page with dark canvas `#0b130e` (E) and dark cards | | | | Theme toggle (O) |
+| 2:17–2:31 | Reference build crashes ("The app hit an error while running … MenuGroupContext is missing") then blank | — | — | — | — | **Defect in the reference; not reproduced.** |
+
+## Not observable
+
+Exact animation durations and easings, hover states that were not triggered, mobile/tablet layouts (single desktop width
+recorded), keyboard behaviour, and the waterfall chart under "Where the energy went" (only its heading is visible).
+
+## Quality problems in the reference (not copied)
+
+Crash at 2:17 (menu component outside its group); stock photo of an identifiable worker (0:27) is replaced by a
+people-free PV close-up; "Photography via Unsplash" credit is replaced by our own generated-image credit.

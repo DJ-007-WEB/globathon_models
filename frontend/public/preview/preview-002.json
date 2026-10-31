@@ -1,0 +1,1786 @@
+{
+ "request_id": "preview-002",
+ "plant_id": "synthetic-plant-a",
+ "filename": "synthetic_scenario_002.csv",
+ "analysis_status": "success",
+ "analysis_mode": "full",
+ "created_at": "2026-01-12T09:20:00+00:00",
+ "result": {
+  "request_id": "preview-002",
+  "plant_id": "synthetic-plant-a",
+  "model": "none",
+  "analysis": null,
+  "ml_analysis": {
+   "schema_version": "2.1.0",
+   "analysis_status": "success",
+   "analysis_mode": "full",
+   "summary": "Full analysis covered 1728 rows across 3 device(s): actual 1388.02 kWh, expected 1415.26 kWh, forecast 1515.05 kWh.",
+   "request": {
+    "plant_id": "synthetic-plant-a",
+    "source_files": [
+     "synthetic_scenario_002.csv",
+     "weather.csv",
+     "devices.csv",
+     "forecast.csv",
+     "event_log.csv"
+    ],
+    "timezone": "UTC",
+    "interval_minutes": null,
+    "mode_requested": "full"
+   },
+   "interval": {
+    "start_utc": "2024-01-08T00:00:00+00:00",
+    "end_utc": "2024-01-11T23:50:00+00:00",
+    "timezone": "UTC",
+    "timestamp_basis": "utc",
+    "duration_minutes": 5750.0,
+    "sampling_interval_seconds": 600.0,
+    "device_count": 3,
+    "row_count": 1728
+   },
+   "energy": {
+    "forecast": {
+     "value_kwh": 1515.0509120000002,
+     "status": "available",
+     "source": "forecast_energy_kwh",
+     "completeness": 1.0,
+     "aggregation_period": "analysis_interval",
+     "unit": "kWh",
+     "reason": null
+    },
+    "expected": {
+     "value_kwh": 1415.2575499107493,
+     "status": "available",
+     "source": "physics_baseline",
+     "completeness": 1.0,
+     "aggregation_period": "analysis_interval",
+     "unit": "kWh",
+     "reason": null
+    },
+    "actual": {
+     "value_kwh": 1388.0176860000001,
+     "status": "available",
+     "source": "energy_kwh",
+     "completeness": 1.0,
+     "aggregation_period": "analysis_interval",
+     "unit": "kWh",
+     "reason": null
+    },
+    "deviation": {
+     "value_kwh": -127.03322600000001,
+     "status": "available",
+     "source": "actual_energy - forecast_energy",
+     "completeness": 1.0,
+     "aggregation_period": "analysis_interval",
+     "unit": "kWh",
+     "reason": null,
+     "sign_convention": "actual_minus_forecast"
+    }
+   },
+   "device_performance": [
+    {
+     "device_id": "INV-01",
+     "row_count": 576,
+     "actual_valid_rows": 576,
+     "expected_valid_rows": 576,
+     "actual_energy_kwh": 471.83266399999997,
+     "expected_energy_kwh": 471.7379396488172,
+     "deviation_kwh": 0.09472435118277645
+    },
+    {
+     "device_id": "INV-02",
+     "row_count": 576,
+     "actual_valid_rows": 576,
+     "expected_valid_rows": 576,
+     "actual_energy_kwh": 444.602447,
+     "expected_energy_kwh": 471.7927168780967,
+     "deviation_kwh": -27.19026987809673
+    },
+    {
+     "device_id": "INV-03",
+     "row_count": 576,
+     "actual_valid_rows": 576,
+     "expected_valid_rows": 576,
+     "actual_energy_kwh": 471.582575,
+     "expected_energy_kwh": 471.7268933838353,
+     "deviation_kwh": -0.14431838383529794
+    }
+   ],
+   "forecast_energy": 1515.0509120000002,
+   "expected_energy": 1415.2575499107493,
+   "actual_energy": 1388.0176860000001,
+   "deviation": -127.03322600000001,
+   "expected_deviation": {
+    "value_kwh": -27.239863910749136,
+    "status": "available",
+    "source": "actual_energy - expected_energy",
+    "completeness": 1.0,
+    "aggregation_period": "analysis_interval",
+    "unit": "kWh",
+    "reason": null,
+    "sign_convention": "actual_minus_expected"
+   },
+   "expected_deviation_kwh": -27.239863910749136,
+   "waterfall": {
+    "status": "ok",
+    "reason": "Waterfall reconciles within tolerance.",
+    "forecast_energy_kwh": 1515.0509120000002,
+    "expected_energy_kwh": 1415.2575499107493,
+    "actual_energy_kwh": 1388.0176860000001,
+    "weather_effect_kwh": -99.79336208925088,
+    "plant_effect_kwh": -27.239863910749136,
+    "total_deviation_kwh": -127.03322600000001,
+    "observed_deviation_kwh": -127.03322600000001,
+    "estimated_anomaly_energy_kwh": 27.239863910749136,
+    "potentially_recoverable_energy_kwh": null,
+    "reconciled": true,
+    "tolerance_kwh": 1e-06,
+    "limitations": [
+     "Potentially recoverable energy is not guaranteed to be recoverable without explicit operational or commercial inputs.",
+     "Logged causes are only a causal hypothesis unless supported by interval evidence.",
+     "Potentially recoverable energy is left null; it requires operational or commercial evidence."
+    ]
+   },
+   "anomalies": [
+    {
+     "timestamp_utc": "2024-01-08T11:50:00+00:00",
+     "device_id": "INV-02",
+     "status": "suspected",
+     "checks": [
+      "cumulative_shortfall"
+     ],
+     "message": "Accumulated shortfall versus physics-expected output (CUSUM).",
+     "evidence": {
+      "actual_power_kw": 0.0,
+      "expected_power_kw": 15.781736902036593,
+      "normalized_output": 0.0,
+      "poa_irradiance_w_m2": 485.41825,
+      "peer_median": 0.9938805739978989,
+      "peer_mad": 0.002151658979346327,
+      "peer_z": -67.03724471615827,
+      "peer_persistence": 1,
+      "residual_shortfall": 1.0,
+      "cusum_score": 0.95
+     },
+     "missing_evidence": [
+      "event log, device status and inspection are needed to determine cause"
+     ]
+    },
+    {
+     "timestamp_utc": "2024-01-08T12:00:00+00:00",
+     "device_id": "INV-02",
+     "status": "suspected",
+     "checks": [
+      "peer_output_deviation",
+      "residual_shortfall"
+     ],
+     "message": "Output is below the median of comparable peers for 2 consecutive intervals. Sustained shortfall versus physics-expected output.",
+     "evidence": {
+      "actual_power_kw": 0.0,
+      "expected_power_kw": 16.91395366490448,
+      "normalized_output": 0.0,
+      "poa_irradiance_w_m2": 521.978943,
+      "peer_median": 1.001170869108472,
+      "peer_mad": 0.000750568907168625,
+      "peer_z": -67.52897512136643,
+      "peer_persistence": 2,
+      "residual_shortfall": 1.0,
+      "cusum_score": 1.9
+     },
+     "missing_evidence": [
+      "event log, device status and inspection are needed to determine cause"
+     ]
+    },
+    {
+     "timestamp_utc": "2024-01-08T12:10:00+00:00",
+     "device_id": "INV-02",
+     "status": "suspected",
+     "checks": [
+      "peer_output_deviation",
+      "residual_shortfall"
+     ],
+     "message": "Output is below the median of comparable peers for 3 consecutive intervals. Sustained shortfall versus physics-expected output.",
+     "evidence": {
+      "actual_power_kw": 0.0,
+      "expected_power_kw": 15.43466412773398,
+      "normalized_output": 0.0,
+      "poa_irradiance_w_m2": 475.43977,
+      "peer_median": 0.995105504681224,
+      "peer_mad": 0.0002592924101550431,
+      "peer_z": -67.11986629074856,
+      "peer_persistence": 3,
+      "residual_shortfall": 1.0,
+      "cusum_score": 2.0
+     },
+     "missing_evidence": [
+      "event log, device status and inspection are needed to determine cause"
+     ]
+    },
+    {
+     "timestamp_utc": "2024-01-08T12:20:00+00:00",
+     "device_id": "INV-02",
+     "status": "suspected",
+     "checks": [
+      "peer_output_deviation",
+      "residual_shortfall"
+     ],
+     "message": "Output is below the median of comparable peers for 4 consecutive intervals. Sustained shortfall versus physics-expected output.",
+     "evidence": {
+      "actual_power_kw": 0.0,
+      "expected_power_kw": 15.787299616163345,
+      "normalized_output": 0.0,
+      "poa_irradiance_w_m2": 485.669465,
+      "peer_median": 0.9986151989421335,
+      "peer_mad": 0.002299974812541683,
+      "peer_z": -67.3565951686469,
+      "peer_persistence": 4,
+      "residual_shortfall": 1.0,
+      "cusum_score": 2.0
+     },
+     "missing_evidence": [
+      "event log, device status and inspection are needed to determine cause"
+     ]
+    },
+    {
+     "timestamp_utc": "2024-01-08T12:30:00+00:00",
+     "device_id": "INV-02",
+     "status": "suspected",
+     "checks": [
+      "peer_output_deviation",
+      "residual_shortfall"
+     ],
+     "message": "Output is below the median of comparable peers for 5 consecutive intervals. Sustained shortfall versus physics-expected output.",
+     "evidence": {
+      "actual_power_kw": 0.0,
+      "expected_power_kw": 15.032063145000183,
+      "normalized_output": 0.0,
+      "poa_irradiance_w_m2": 464.704683,
+      "peer_median": 0.9973952000633393,
+      "peer_mad": 0.000976684458068644,
+      "peer_z": -67.27430624427222,
+      "peer_persistence": 5,
+      "residual_shortfall": 1.0,
+      "cusum_score": 2.0
+     },
+     "missing_evidence": [
+      "event log, device status and inspection are needed to determine cause"
+     ]
+    },
+    {
+     "timestamp_utc": "2024-01-08T12:40:00+00:00",
+     "device_id": "INV-02",
+     "status": "suspected",
+     "checks": [
+      "peer_output_deviation",
+      "residual_shortfall"
+     ],
+     "message": "Output is below the median of comparable peers for 6 consecutive intervals. Sustained shortfall versus physics-expected output.",
+     "evidence": {
+      "actual_power_kw": 0.0,
+      "expected_power_kw": 15.422200102312065,
+      "normalized_output": 0.0,
+      "poa_irradiance_w_m2": 476.840976,
+      "peer_median": 0.9968502167828794,
+      "peer_mad": 0.0013459955863218132,
+      "peer_z": -67.23754712200521,
+      "peer_persistence": 6,
+      "residual_shortfall": 1.0,
+      "cusum_score": 2.0
+     },
+     "missing_evidence": [
+      "event log, device status and inspection are needed to determine cause"
+     ]
+    },
+    {
+     "timestamp_utc": "2024-01-08T12:50:00+00:00",
+     "device_id": "INV-02",
+     "status": "suspected",
+     "checks": [
+      "peer_output_deviation",
+      "residual_shortfall"
+     ],
+     "message": "Output is below the median of comparable peers for 7 consecutive intervals. Sustained shortfall versus physics-expected output.",
+     "evidence": {
+      "actual_power_kw": 0.0,
+      "expected_power_kw": 14.888832451751782,
+      "normalized_output": 0.0,
+      "poa_irradiance_w_m2": 459.261705,
+      "peer_median": 1.0083869671250532,
+      "peer_mad": 0.000848202081186078,
+      "peer_z": -68.01570093258483,
+      "peer_persistence": 7,
+      "residual_shortfall": 1.0,
+      "cusum_score": 2.0
+     },
+     "missing_evidence": [
+      "event log, device status and inspection are needed to determine cause"
+     ]
+    },
+    {
+     "timestamp_utc": "2024-01-08T13:00:00+00:00",
+     "device_id": "INV-02",
+     "status": "suspected",
+     "checks": [
+      "peer_output_deviation",
+      "residual_shortfall"
+     ],
+     "message": "Output is below the median of comparable peers for 8 consecutive intervals. Sustained shortfall versus physics-expected output.",
+     "evidence": {
+      "actual_power_kw": 0.0,
+      "expected_power_kw": 14.305019220557714,
+      "normalized_output": 0.0,
+      "poa_irradiance_w_m2": 442.557475,
+      "peer_median": 1.0046537176406138,
+      "peer_mad": 0.0007931904025931802,
+      "peer_z": -67.7638932548594,
+      "peer_persistence": 8,
+      "residual_shortfall": 1.0,
+      "cusum_score": 2.0
+     },
+     "missing_evidence": [
+      "event log, device status and inspection are needed to determine cause"
+     ]
+    },
+    {
+     "timestamp_utc": "2024-01-08T13:10:00+00:00",
+     "device_id": "INV-02",
+     "status": "suspected",
+     "checks": [
+      "peer_output_deviation",
+      "residual_shortfall"
+     ],
+     "message": "Output is below the median of comparable peers for 9 consecutive intervals. Sustained shortfall versus physics-expected output.",
+     "evidence": {
+      "actual_power_kw": 0.0,
+      "expected_power_kw": 12.978382437361578,
+      "normalized_output": 0.0,
+      "poa_irradiance_w_m2": 399.864027,
+      "peer_median": 0.9988866187978243,
+      "peer_mad": 0.0033812574276608776,
+      "peer_z": -67.37490243791324,
+      "peer_persistence": 9,
+      "residual_shortfall": 1.0,
+      "cusum_score": 2.0
+     },
+     "missing_evidence": [
+      "event log, device status and inspection are needed to determine cause"
+     ]
+    },
+    {
+     "timestamp_utc": "2024-01-08T13:20:00+00:00",
+     "device_id": "INV-02",
+     "status": "suspected",
+     "checks": [
+      "peer_output_deviation",
+      "residual_shortfall"
+     ],
+     "message": "Output is below the median of comparable peers for 10 consecutive intervals. Sustained shortfall versus physics-expected output.",
+     "evidence": {
+      "actual_power_kw": 0.0,
+      "expected_power_kw": 13.0584063602734,
+      "normalized_output": 0.0,
+      "poa_irradiance_w_m2": 400.400721,
+      "peer_median": 0.9924402489998081,
+      "peer_mad": 0.004392264317881589,
+      "peer_z": -66.94009479503706,
+      "peer_persistence": 10,
+      "residual_shortfall": 1.0,
+      "cusum_score": 2.0
+     },
+     "missing_evidence": [
+      "event log, device status and inspection are needed to determine cause"
+     ]
+    },
+    {
+     "timestamp_utc": "2024-01-08T13:30:00+00:00",
+     "device_id": "INV-02",
+     "status": "suspected",
+     "checks": [
+      "peer_output_deviation",
+      "residual_shortfall"
+     ],
+     "message": "Output is below the median of comparable peers for 11 consecutive intervals. Sustained shortfall versus physics-expected output.",
+     "evidence": {
+      "actual_power_kw": 0.0,
+      "expected_power_kw": 13.32356237366271,
+      "normalized_output": 0.0,
+      "poa_irradiance_w_m2": 408.171616,
+      "peer_median": 0.9990610332580041,
+      "peer_mad": 0.0011336034678635643,
+      "peer_z": -67.38666669325237,
+      "peer_persistence": 11,
+      "residual_shortfall": 1.0,
+      "cusum_score": 2.0
+     },
+     "missing_evidence": [
+      "event log, device status and inspection are needed to determine cause"
+     ]
+    }
+   ],
+   "hypotheses": [
+    {
+     "cause": "low_output_under_adequate_irradiance",
+     "label": "Low output under adequate irradiance",
+     "status": "suspected",
+     "root_cause_confirmed": false,
+     "event_confirmed": false,
+     "primary_allowed": true,
+     "confidence": 0.6,
+     "interval": {
+      "timestamp_utc": "2024-01-08T11:50:00+00:00",
+      "device_id": "INV-02"
+     },
+     "evidence": [
+      "output ratio 0.000 is below the configured 0.800 threshold",
+      "POA irradiance 485.4 W/m2 is adequate for assessment",
+      "physics-expected output=15.782 kW"
+     ],
+     "missing_evidence": [
+      "root-cause evidence such as a logged event, device fault, or inspection"
+     ],
+     "source": "deterministic_rule"
+    },
+    {
+     "cause": "peer_underperformance",
+     "label": "Peer underperformance",
+     "status": "suspected",
+     "root_cause_confirmed": false,
+     "event_confirmed": false,
+     "primary_allowed": true,
+     "confidence": 0.6,
+     "interval": {
+      "timestamp_utc": "2024-01-08T12:00:00+00:00",
+      "device_id": "INV-02"
+     },
+     "evidence": [
+      "output is below the median of comparable peer devices",
+      "peer median normalized output=1.001",
+      "peer MAD=0.001",
+      "robust peer score=-67.529",
+      "persistence=2 intervals"
+     ],
+     "missing_evidence": [
+      "device-level cause evidence such as outage, derating, or inspection"
+     ],
+     "source": "deterministic_rule"
+    },
+    {
+     "cause": "low_output_under_adequate_irradiance",
+     "label": "Low output under adequate irradiance",
+     "status": "suspected",
+     "root_cause_confirmed": false,
+     "event_confirmed": false,
+     "primary_allowed": true,
+     "confidence": 0.6,
+     "interval": {
+      "timestamp_utc": "2024-01-08T12:00:00+00:00",
+      "device_id": "INV-02"
+     },
+     "evidence": [
+      "output ratio 0.000 is below the configured 0.800 threshold",
+      "POA irradiance 522.0 W/m2 is adequate for assessment",
+      "physics-expected output=16.914 kW"
+     ],
+     "missing_evidence": [
+      "root-cause evidence such as a logged event, device fault, or inspection"
+     ],
+     "source": "deterministic_rule"
+    },
+    {
+     "cause": "peer_underperformance",
+     "label": "Peer underperformance",
+     "status": "suspected",
+     "root_cause_confirmed": false,
+     "event_confirmed": false,
+     "primary_allowed": true,
+     "confidence": 0.6,
+     "interval": {
+      "timestamp_utc": "2024-01-08T12:10:00+00:00",
+      "device_id": "INV-02"
+     },
+     "evidence": [
+      "output is below the median of comparable peer devices",
+      "peer median normalized output=0.995",
+      "peer MAD=0.000",
+      "robust peer score=-67.120",
+      "persistence=3 intervals"
+     ],
+     "missing_evidence": [
+      "device-level cause evidence such as outage, derating, or inspection"
+     ],
+     "source": "deterministic_rule"
+    },
+    {
+     "cause": "low_output_under_adequate_irradiance",
+     "label": "Low output under adequate irradiance",
+     "status": "suspected",
+     "root_cause_confirmed": false,
+     "event_confirmed": false,
+     "primary_allowed": true,
+     "confidence": 0.6,
+     "interval": {
+      "timestamp_utc": "2024-01-08T12:10:00+00:00",
+      "device_id": "INV-02"
+     },
+     "evidence": [
+      "output ratio 0.000 is below the configured 0.800 threshold",
+      "POA irradiance 475.4 W/m2 is adequate for assessment",
+      "physics-expected output=15.435 kW"
+     ],
+     "missing_evidence": [
+      "root-cause evidence such as a logged event, device fault, or inspection"
+     ],
+     "source": "deterministic_rule"
+    },
+    {
+     "cause": "peer_underperformance",
+     "label": "Peer underperformance",
+     "status": "suspected",
+     "root_cause_confirmed": false,
+     "event_confirmed": false,
+     "primary_allowed": true,
+     "confidence": 0.6,
+     "interval": {
+      "timestamp_utc": "2024-01-08T12:20:00+00:00",
+      "device_id": "INV-02"
+     },
+     "evidence": [
+      "output is below the median of comparable peer devices",
+      "peer median normalized output=0.999",
+      "peer MAD=0.002",
+      "robust peer score=-67.357",
+      "persistence=4 intervals"
+     ],
+     "missing_evidence": [
+      "device-level cause evidence such as outage, derating, or inspection"
+     ],
+     "source": "deterministic_rule"
+    },
+    {
+     "cause": "low_output_under_adequate_irradiance",
+     "label": "Low output under adequate irradiance",
+     "status": "suspected",
+     "root_cause_confirmed": false,
+     "event_confirmed": false,
+     "primary_allowed": true,
+     "confidence": 0.6,
+     "interval": {
+      "timestamp_utc": "2024-01-08T12:20:00+00:00",
+      "device_id": "INV-02"
+     },
+     "evidence": [
+      "output ratio 0.000 is below the configured 0.800 threshold",
+      "POA irradiance 485.7 W/m2 is adequate for assessment",
+      "physics-expected output=15.787 kW"
+     ],
+     "missing_evidence": [
+      "root-cause evidence such as a logged event, device fault, or inspection"
+     ],
+     "source": "deterministic_rule"
+    },
+    {
+     "cause": "peer_underperformance",
+     "label": "Peer underperformance",
+     "status": "suspected",
+     "root_cause_confirmed": false,
+     "event_confirmed": false,
+     "primary_allowed": true,
+     "confidence": 0.6,
+     "interval": {
+      "timestamp_utc": "2024-01-08T12:30:00+00:00",
+      "device_id": "INV-02"
+     },
+     "evidence": [
+      "output is below the median of comparable peer devices",
+      "peer median normalized output=0.997",
+      "peer MAD=0.001",
+      "robust peer score=-67.274",
+      "persistence=5 intervals"
+     ],
+     "missing_evidence": [
+      "device-level cause evidence such as outage, derating, or inspection"
+     ],
+     "source": "deterministic_rule"
+    },
+    {
+     "cause": "low_output_under_adequate_irradiance",
+     "label": "Low output under adequate irradiance",
+     "status": "suspected",
+     "root_cause_confirmed": false,
+     "event_confirmed": false,
+     "primary_allowed": true,
+     "confidence": 0.6,
+     "interval": {
+      "timestamp_utc": "2024-01-08T12:30:00+00:00",
+      "device_id": "INV-02"
+     },
+     "evidence": [
+      "output ratio 0.000 is below the configured 0.800 threshold",
+      "POA irradiance 464.7 W/m2 is adequate for assessment",
+      "physics-expected output=15.032 kW"
+     ],
+     "missing_evidence": [
+      "root-cause evidence such as a logged event, device fault, or inspection"
+     ],
+     "source": "deterministic_rule"
+    },
+    {
+     "cause": "peer_underperformance",
+     "label": "Peer underperformance",
+     "status": "suspected",
+     "root_cause_confirmed": false,
+     "event_confirmed": false,
+     "primary_allowed": true,
+     "confidence": 0.6,
+     "interval": {
+      "timestamp_utc": "2024-01-08T12:40:00+00:00",
+      "device_id": "INV-02"
+     },
+     "evidence": [
+      "output is below the median of comparable peer devices",
+      "peer median normalized output=0.997",
+      "peer MAD=0.001",
+      "robust peer score=-67.238",
+      "persistence=6 intervals"
+     ],
+     "missing_evidence": [
+      "device-level cause evidence such as outage, derating, or inspection"
+     ],
+     "source": "deterministic_rule"
+    },
+    {
+     "cause": "low_output_under_adequate_irradiance",
+     "label": "Low output under adequate irradiance",
+     "status": "suspected",
+     "root_cause_confirmed": false,
+     "event_confirmed": false,
+     "primary_allowed": true,
+     "confidence": 0.6,
+     "interval": {
+      "timestamp_utc": "2024-01-08T12:40:00+00:00",
+      "device_id": "INV-02"
+     },
+     "evidence": [
+      "output ratio 0.000 is below the configured 0.800 threshold",
+      "POA irradiance 476.8 W/m2 is adequate for assessment",
+      "physics-expected output=15.422 kW"
+     ],
+     "missing_evidence": [
+      "root-cause evidence such as a logged event, device fault, or inspection"
+     ],
+     "source": "deterministic_rule"
+    },
+    {
+     "cause": "peer_underperformance",
+     "label": "Peer underperformance",
+     "status": "suspected",
+     "root_cause_confirmed": false,
+     "event_confirmed": false,
+     "primary_allowed": true,
+     "confidence": 0.6,
+     "interval": {
+      "timestamp_utc": "2024-01-08T12:50:00+00:00",
+      "device_id": "INV-02"
+     },
+     "evidence": [
+      "output is below the median of comparable peer devices",
+      "peer median normalized output=1.008",
+      "peer MAD=0.001",
+      "robust peer score=-68.016",
+      "persistence=7 intervals"
+     ],
+     "missing_evidence": [
+      "device-level cause evidence such as outage, derating, or inspection"
+     ],
+     "source": "deterministic_rule"
+    },
+    {
+     "cause": "low_output_under_adequate_irradiance",
+     "label": "Low output under adequate irradiance",
+     "status": "suspected",
+     "root_cause_confirmed": false,
+     "event_confirmed": false,
+     "primary_allowed": true,
+     "confidence": 0.6,
+     "interval": {
+      "timestamp_utc": "2024-01-08T12:50:00+00:00",
+      "device_id": "INV-02"
+     },
+     "evidence": [
+      "output ratio 0.000 is below the configured 0.800 threshold",
+      "POA irradiance 459.3 W/m2 is adequate for assessment",
+      "physics-expected output=14.889 kW"
+     ],
+     "missing_evidence": [
+      "root-cause evidence such as a logged event, device fault, or inspection"
+     ],
+     "source": "deterministic_rule"
+    },
+    {
+     "cause": "peer_underperformance",
+     "label": "Peer underperformance",
+     "status": "suspected",
+     "root_cause_confirmed": false,
+     "event_confirmed": false,
+     "primary_allowed": true,
+     "confidence": 0.6,
+     "interval": {
+      "timestamp_utc": "2024-01-08T13:00:00+00:00",
+      "device_id": "INV-02"
+     },
+     "evidence": [
+      "output is below the median of comparable peer devices",
+      "peer median normalized output=1.005",
+      "peer MAD=0.001",
+      "robust peer score=-67.764",
+      "persistence=8 intervals"
+     ],
+     "missing_evidence": [
+      "device-level cause evidence such as outage, derating, or inspection"
+     ],
+     "source": "deterministic_rule"
+    },
+    {
+     "cause": "low_output_under_adequate_irradiance",
+     "label": "Low output under adequate irradiance",
+     "status": "suspected",
+     "root_cause_confirmed": false,
+     "event_confirmed": false,
+     "primary_allowed": true,
+     "confidence": 0.6,
+     "interval": {
+      "timestamp_utc": "2024-01-08T13:00:00+00:00",
+      "device_id": "INV-02"
+     },
+     "evidence": [
+      "output ratio 0.000 is below the configured 0.800 threshold",
+      "POA irradiance 442.6 W/m2 is adequate for assessment",
+      "physics-expected output=14.305 kW"
+     ],
+     "missing_evidence": [
+      "root-cause evidence such as a logged event, device fault, or inspection"
+     ],
+     "source": "deterministic_rule"
+    },
+    {
+     "cause": "peer_underperformance",
+     "label": "Peer underperformance",
+     "status": "suspected",
+     "root_cause_confirmed": false,
+     "event_confirmed": false,
+     "primary_allowed": true,
+     "confidence": 0.6,
+     "interval": {
+      "timestamp_utc": "2024-01-08T13:10:00+00:00",
+      "device_id": "INV-02"
+     },
+     "evidence": [
+      "output is below the median of comparable peer devices",
+      "peer median normalized output=0.999",
+      "peer MAD=0.003",
+      "robust peer score=-67.375",
+      "persistence=9 intervals"
+     ],
+     "missing_evidence": [
+      "device-level cause evidence such as outage, derating, or inspection"
+     ],
+     "source": "deterministic_rule"
+    },
+    {
+     "cause": "low_output_under_adequate_irradiance",
+     "label": "Low output under adequate irradiance",
+     "status": "suspected",
+     "root_cause_confirmed": false,
+     "event_confirmed": false,
+     "primary_allowed": true,
+     "confidence": 0.6,
+     "interval": {
+      "timestamp_utc": "2024-01-08T13:10:00+00:00",
+      "device_id": "INV-02"
+     },
+     "evidence": [
+      "output ratio 0.000 is below the configured 0.800 threshold",
+      "POA irradiance 399.9 W/m2 is adequate for assessment",
+      "physics-expected output=12.978 kW"
+     ],
+     "missing_evidence": [
+      "root-cause evidence such as a logged event, device fault, or inspection"
+     ],
+     "source": "deterministic_rule"
+    },
+    {
+     "cause": "peer_underperformance",
+     "label": "Peer underperformance",
+     "status": "suspected",
+     "root_cause_confirmed": false,
+     "event_confirmed": false,
+     "primary_allowed": true,
+     "confidence": 0.6,
+     "interval": {
+      "timestamp_utc": "2024-01-08T13:20:00+00:00",
+      "device_id": "INV-02"
+     },
+     "evidence": [
+      "output is below the median of comparable peer devices",
+      "peer median normalized output=0.992",
+      "peer MAD=0.004",
+      "robust peer score=-66.940",
+      "persistence=10 intervals"
+     ],
+     "missing_evidence": [
+      "device-level cause evidence such as outage, derating, or inspection"
+     ],
+     "source": "deterministic_rule"
+    },
+    {
+     "cause": "low_output_under_adequate_irradiance",
+     "label": "Low output under adequate irradiance",
+     "status": "suspected",
+     "root_cause_confirmed": false,
+     "event_confirmed": false,
+     "primary_allowed": true,
+     "confidence": 0.6,
+     "interval": {
+      "timestamp_utc": "2024-01-08T13:20:00+00:00",
+      "device_id": "INV-02"
+     },
+     "evidence": [
+      "output ratio 0.000 is below the configured 0.800 threshold",
+      "POA irradiance 400.4 W/m2 is adequate for assessment",
+      "physics-expected output=13.058 kW"
+     ],
+     "missing_evidence": [
+      "root-cause evidence such as a logged event, device fault, or inspection"
+     ],
+     "source": "deterministic_rule"
+    },
+    {
+     "cause": "peer_underperformance",
+     "label": "Peer underperformance",
+     "status": "suspected",
+     "root_cause_confirmed": false,
+     "event_confirmed": false,
+     "primary_allowed": true,
+     "confidence": 0.6,
+     "interval": {
+      "timestamp_utc": "2024-01-08T13:30:00+00:00",
+      "device_id": "INV-02"
+     },
+     "evidence": [
+      "output is below the median of comparable peer devices",
+      "peer median normalized output=0.999",
+      "peer MAD=0.001",
+      "robust peer score=-67.387",
+      "persistence=11 intervals"
+     ],
+     "missing_evidence": [
+      "device-level cause evidence such as outage, derating, or inspection"
+     ],
+     "source": "deterministic_rule"
+    },
+    {
+     "cause": "low_output_under_adequate_irradiance",
+     "label": "Low output under adequate irradiance",
+     "status": "suspected",
+     "root_cause_confirmed": false,
+     "event_confirmed": false,
+     "primary_allowed": true,
+     "confidence": 0.6,
+     "interval": {
+      "timestamp_utc": "2024-01-08T13:30:00+00:00",
+      "device_id": "INV-02"
+     },
+     "evidence": [
+      "output ratio 0.000 is below the configured 0.800 threshold",
+      "POA irradiance 408.2 W/m2 is adequate for assessment",
+      "physics-expected output=13.324 kW"
+     ],
+     "missing_evidence": [
+      "root-cause evidence such as a logged event, device fault, or inspection"
+     ],
+     "source": "deterministic_rule"
+    }
+   ],
+   "evidence": [
+    "output ratio 0.000 is below the configured 0.800 threshold",
+    "POA irradiance 485.4 W/m2 is adequate for assessment",
+    "physics-expected output=15.782 kW",
+    "output is below the median of comparable peer devices",
+    "peer median normalized output=1.001",
+    "peer MAD=0.001",
+    "robust peer score=-67.529",
+    "persistence=2 intervals",
+    "POA irradiance 522.0 W/m2 is adequate for assessment",
+    "physics-expected output=16.914 kW",
+    "peer median normalized output=0.995",
+    "peer MAD=0.000",
+    "robust peer score=-67.120",
+    "persistence=3 intervals",
+    "POA irradiance 475.4 W/m2 is adequate for assessment",
+    "physics-expected output=15.435 kW",
+    "peer median normalized output=0.999",
+    "peer MAD=0.002",
+    "robust peer score=-67.357",
+    "persistence=4 intervals",
+    "POA irradiance 485.7 W/m2 is adequate for assessment",
+    "physics-expected output=15.787 kW",
+    "peer median normalized output=0.997",
+    "robust peer score=-67.274",
+    "persistence=5 intervals",
+    "POA irradiance 464.7 W/m2 is adequate for assessment",
+    "physics-expected output=15.032 kW",
+    "robust peer score=-67.238",
+    "persistence=6 intervals",
+    "POA irradiance 476.8 W/m2 is adequate for assessment",
+    "physics-expected output=15.422 kW",
+    "peer median normalized output=1.008",
+    "robust peer score=-68.016",
+    "persistence=7 intervals",
+    "POA irradiance 459.3 W/m2 is adequate for assessment",
+    "physics-expected output=14.889 kW",
+    "peer median normalized output=1.005",
+    "robust peer score=-67.764",
+    "persistence=8 intervals",
+    "POA irradiance 442.6 W/m2 is adequate for assessment",
+    "physics-expected output=14.305 kW",
+    "peer MAD=0.003",
+    "robust peer score=-67.375",
+    "persistence=9 intervals",
+    "POA irradiance 399.9 W/m2 is adequate for assessment",
+    "physics-expected output=12.978 kW",
+    "peer median normalized output=0.992",
+    "peer MAD=0.004",
+    "robust peer score=-66.940",
+    "persistence=10 intervals",
+    "POA irradiance 400.4 W/m2 is adequate for assessment",
+    "physics-expected output=13.058 kW",
+    "robust peer score=-67.387",
+    "persistence=11 intervals",
+    "POA irradiance 408.2 W/m2 is adequate for assessment",
+    "physics-expected output=13.324 kW"
+   ],
+   "limitations": [
+    "event_log input contains no data rows and was ignored.",
+    "Weather context aligned to 100% of operating rows (weather interval starting at or up to 10 min before each operating row).",
+    "All source records are marked synthetic; use this result for integration validation, not real-world accuracy claims.",
+    "Peer checks require sufficient same-time devices with comparable rated capacity.",
+    "Residual checks inherit the documented physics-baseline assumptions.",
+    "Alerts indicate unusual behavior and are not root-cause findings."
+   ],
+   "unresolved_fields": [],
+   "missing_required_fields": [],
+   "data_quality": {
+    "status": "pass",
+    "valid": true,
+    "rows": 1728,
+    "checks": [
+     {
+      "check_id": "duplicate_timestamps",
+      "status": "pass",
+      "count": 0,
+      "message": "Duplicate timestamp values were counted within each device group.",
+      "affected_devices": [],
+      "time_ranges": [],
+      "details": {
+       "timestamp_basis": "utc",
+       "duplicate_rows_including_first": 0,
+       "by_device": {}
+      }
+     },
+     {
+      "check_id": "out_of_order_timestamps",
+      "status": "pass",
+      "count": 0,
+      "message": "Rows were checked using normalized UTC time within each device group.",
+      "affected_devices": [],
+      "time_ranges": [],
+      "details": {
+       "timestamp_basis": "utc",
+       "by_device": {}
+      }
+     },
+     {
+      "check_id": "time_gaps",
+      "status": "pass",
+      "count": 0,
+      "message": "Found 0 gap(s) larger than the configured per-device threshold.",
+      "affected_devices": [],
+      "time_ranges": [],
+      "details": {
+       "expected_interval_seconds": 600.0,
+       "threshold_seconds": 900.0,
+       "threshold_text": 900.0,
+       "maximum_gap_seconds": 0.0,
+       "by_device": {}
+      }
+     },
+     {
+      "check_id": "missing_values",
+      "status": "pass",
+      "count": 0,
+      "message": "No missing readings in accepted mapped fields.",
+      "affected_devices": [],
+      "time_ranges": [],
+      "details": {
+       "columns": {
+        "scenario_id": {
+         "role": "scenario_id",
+         "missing": 0,
+         "valid_fraction": 1.0
+        },
+        "synthetic": {
+         "role": "synthetic_flag",
+         "missing": 0,
+         "valid_fraction": 1.0
+        },
+        "timestamp_utc": {
+         "role": "timestamp",
+         "missing": 0,
+         "valid_fraction": 1.0
+        },
+        "inverter_id": {
+         "role": "device_id",
+         "missing": 0,
+         "valid_fraction": 1.0
+        },
+        "ac_power_kw": {
+         "role": "power_ac",
+         "missing": 0,
+         "valid_fraction": 1.0
+        },
+        "dc_power_kw": {
+         "role": "power_dc",
+         "missing": 0,
+         "valid_fraction": 1.0
+        },
+        "energy_kwh": {
+         "role": "energy_interval",
+         "missing": 0,
+         "valid_fraction": 1.0
+        },
+        "module_temperature_c": {
+         "role": "module_temperature",
+         "missing": 0,
+         "valid_fraction": 1.0
+        },
+        "ambient_temperature_c": {
+         "role": "ambient_temperature",
+         "missing": 0,
+         "valid_fraction": 1.0
+        },
+        "poa_irradiance_w_m2": {
+         "role": "irradiance_poa",
+         "missing": 0,
+         "valid_fraction": 1.0
+        }
+       },
+       "minimum_valid_fraction": 0.8,
+       "failing_columns": []
+      }
+     },
+     {
+      "check_id": "night_time_generation",
+      "status": "pass",
+      "count": 0,
+      "message": "No mapped power, interval-energy or irradiance reading exceeded the configured night threshold.",
+      "affected_devices": [],
+      "time_ranges": [],
+      "details": {
+       "sun_elevation_threshold_deg": -0.833,
+       "method": "NOAA fractional-year approximation (screening only)"
+      }
+     }
+    ],
+    "counts": {
+     "checks": 5,
+     "fail": 0,
+     "warning": 0,
+     "pass": 5,
+     "not_checked": 0
+    },
+    "sampling_interval_seconds": 600.0,
+    "limitations": []
+   },
+   "capabilities": {
+    "basic_validation": {
+     "status": "available",
+     "reason": null
+    },
+    "baseline": {
+     "status": "available",
+     "reason": null
+    },
+    "persistence": {
+     "status": "available",
+     "reason": null
+    },
+    "peer_comparison": {
+     "status": "available",
+     "reason": null
+    },
+    "trend_analysis": {
+     "status": "available",
+     "reason": null
+    },
+    "event_correlation": {
+     "status": "unavailable",
+     "reason": "No usable event log was supplied."
+    },
+    "energy_waterfall": {
+     "status": "available",
+     "reason": null
+    }
+   },
+   "units": {
+    "power": "kW",
+    "energy": "kWh",
+    "irradiance": "W/m2",
+    "temperature": "C",
+    "duration": "minutes"
+   },
+   "model_version": "1.0.0",
+   "mapping_version": "1.0.0",
+   "config_version": "1.0.0",
+   "vocab_version": "1.1.0",
+   "method": "physics_baseline",
+   "model_status": "physics_baseline_active",
+   "errors": [],
+   "column_mapping": [
+    {
+     "input": "operating",
+     "source_file": "operating_data.csv",
+     "sheet_name": null,
+     "source_column": "scenario_id",
+     "canonical_role": "scenario_id",
+     "device_id": null,
+     "detected_unit": null,
+     "canonical_unit": null,
+     "conversion": null,
+     "confidence": 1.0,
+     "used": true,
+     "reasons": []
+    },
+    {
+     "input": "operating",
+     "source_file": "operating_data.csv",
+     "sheet_name": null,
+     "source_column": "synthetic",
+     "canonical_role": "synthetic_flag",
+     "device_id": null,
+     "detected_unit": null,
+     "canonical_unit": null,
+     "conversion": null,
+     "confidence": 1.0,
+     "used": true,
+     "reasons": []
+    },
+    {
+     "input": "operating",
+     "source_file": "operating_data.csv",
+     "sheet_name": null,
+     "source_column": "timestamp_utc",
+     "canonical_role": "timestamp",
+     "device_id": null,
+     "detected_unit": null,
+     "canonical_unit": null,
+     "conversion": null,
+     "confidence": 1.0,
+     "used": true,
+     "reasons": []
+    },
+    {
+     "input": "operating",
+     "source_file": "operating_data.csv",
+     "sheet_name": null,
+     "source_column": "inverter_id",
+     "canonical_role": "device_id",
+     "device_id": null,
+     "detected_unit": null,
+     "canonical_unit": null,
+     "conversion": null,
+     "confidence": 1.0,
+     "used": true,
+     "reasons": []
+    },
+    {
+     "input": "operating",
+     "source_file": "operating_data.csv",
+     "sheet_name": null,
+     "source_column": "ac_power_kw",
+     "canonical_role": "power_ac",
+     "device_id": null,
+     "detected_unit": "kW",
+     "canonical_unit": "kW",
+     "conversion": "kW (no conversion)",
+     "confidence": 1.0,
+     "used": true,
+     "reasons": []
+    },
+    {
+     "input": "operating",
+     "source_file": "operating_data.csv",
+     "sheet_name": null,
+     "source_column": "dc_power_kw",
+     "canonical_role": "power_dc",
+     "device_id": null,
+     "detected_unit": "kW",
+     "canonical_unit": "kW",
+     "conversion": "kW (no conversion)",
+     "confidence": 1.0,
+     "used": true,
+     "reasons": []
+    },
+    {
+     "input": "operating",
+     "source_file": "operating_data.csv",
+     "sheet_name": null,
+     "source_column": "energy_kwh",
+     "canonical_role": "energy_interval",
+     "device_id": null,
+     "detected_unit": "kWh",
+     "canonical_unit": "kWh",
+     "conversion": "kWh (no conversion)",
+     "confidence": 1.0,
+     "used": true,
+     "reasons": []
+    },
+    {
+     "input": "operating",
+     "source_file": "operating_data.csv",
+     "sheet_name": null,
+     "source_column": "module_temperature_c",
+     "canonical_role": "module_temperature",
+     "device_id": null,
+     "detected_unit": "C",
+     "canonical_unit": "C",
+     "conversion": "C (no conversion)",
+     "confidence": 1.0,
+     "used": true,
+     "reasons": []
+    },
+    {
+     "input": "operating",
+     "source_file": "operating_data.csv",
+     "sheet_name": null,
+     "source_column": "ambient_temperature_c",
+     "canonical_role": "ambient_temperature",
+     "device_id": null,
+     "detected_unit": "C",
+     "canonical_unit": "C",
+     "conversion": "C (no conversion)",
+     "confidence": 1.0,
+     "used": true,
+     "reasons": []
+    },
+    {
+     "input": "operating",
+     "source_file": "operating_data.csv",
+     "sheet_name": null,
+     "source_column": "poa_irradiance_w_m2",
+     "canonical_role": "irradiance_poa",
+     "device_id": null,
+     "detected_unit": "W/m2",
+     "canonical_unit": "W/m2",
+     "conversion": "W/m2 (no conversion)",
+     "confidence": 1.0,
+     "used": true,
+     "reasons": []
+    },
+    {
+     "input": "weather",
+     "source_file": "weather.csv",
+     "sheet_name": null,
+     "source_column": "scenario_id",
+     "canonical_role": "scenario_id",
+     "device_id": null,
+     "detected_unit": null,
+     "canonical_unit": null,
+     "conversion": null,
+     "confidence": 1.0,
+     "used": true,
+     "reasons": []
+    },
+    {
+     "input": "weather",
+     "source_file": "weather.csv",
+     "sheet_name": null,
+     "source_column": "synthetic",
+     "canonical_role": "synthetic_flag",
+     "device_id": null,
+     "detected_unit": null,
+     "canonical_unit": null,
+     "conversion": null,
+     "confidence": 1.0,
+     "used": true,
+     "reasons": []
+    },
+    {
+     "input": "weather",
+     "source_file": "weather.csv",
+     "sheet_name": null,
+     "source_column": "timestamp_utc",
+     "canonical_role": "timestamp",
+     "device_id": null,
+     "detected_unit": null,
+     "canonical_unit": null,
+     "conversion": null,
+     "confidence": 1.0,
+     "used": true,
+     "reasons": []
+    },
+    {
+     "input": "weather",
+     "source_file": "weather.csv",
+     "sheet_name": null,
+     "source_column": "solar_elevation_deg",
+     "canonical_role": "sun_elevation",
+     "device_id": null,
+     "detected_unit": null,
+     "canonical_unit": null,
+     "conversion": null,
+     "confidence": 1.0,
+     "used": true,
+     "reasons": []
+    },
+    {
+     "input": "weather",
+     "source_file": "weather.csv",
+     "sheet_name": null,
+     "source_column": "ghi_w_m2",
+     "canonical_role": "irradiance_ghi",
+     "device_id": null,
+     "detected_unit": "W/m2",
+     "canonical_unit": "W/m2",
+     "conversion": "W/m2 (no conversion)",
+     "confidence": 1.0,
+     "used": true,
+     "reasons": []
+    },
+    {
+     "input": "weather",
+     "source_file": "weather.csv",
+     "sheet_name": null,
+     "source_column": "dni_w_m2",
+     "canonical_role": "irradiance_dni",
+     "device_id": null,
+     "detected_unit": "W/m2",
+     "canonical_unit": "W/m2",
+     "conversion": "W/m2 (no conversion)",
+     "confidence": 1.0,
+     "used": true,
+     "reasons": []
+    },
+    {
+     "input": "weather",
+     "source_file": "weather.csv",
+     "sheet_name": null,
+     "source_column": "dhi_w_m2",
+     "canonical_role": "irradiance_dhi",
+     "device_id": null,
+     "detected_unit": "W/m2",
+     "canonical_unit": "W/m2",
+     "conversion": "W/m2 (no conversion)",
+     "confidence": 1.0,
+     "used": true,
+     "reasons": []
+    },
+    {
+     "input": "weather",
+     "source_file": "weather.csv",
+     "sheet_name": null,
+     "source_column": "poa_irradiance_w_m2",
+     "canonical_role": "irradiance_poa",
+     "device_id": null,
+     "detected_unit": "W/m2",
+     "canonical_unit": "W/m2",
+     "conversion": "W/m2 (no conversion)",
+     "confidence": 1.0,
+     "used": true,
+     "reasons": []
+    },
+    {
+     "input": "weather",
+     "source_file": "weather.csv",
+     "sheet_name": null,
+     "source_column": "ambient_temperature_c",
+     "canonical_role": "ambient_temperature",
+     "device_id": null,
+     "detected_unit": "C",
+     "canonical_unit": "C",
+     "conversion": "C (no conversion)",
+     "confidence": 1.0,
+     "used": true,
+     "reasons": []
+    },
+    {
+     "input": "weather",
+     "source_file": "weather.csv",
+     "sheet_name": null,
+     "source_column": "wind_speed_m_s",
+     "canonical_role": null,
+     "device_id": null,
+     "detected_unit": null,
+     "canonical_unit": null,
+     "conversion": null,
+     "confidence": 0.0,
+     "used": false,
+     "reasons": [
+      "No vocabulary match above the minimum score."
+     ]
+    },
+    {
+     "input": "weather",
+     "source_file": "weather.csv",
+     "sheet_name": null,
+     "source_column": "cloud_cover_fraction",
+     "canonical_role": "cloud_cover",
+     "device_id": null,
+     "detected_unit": null,
+     "canonical_unit": null,
+     "conversion": null,
+     "confidence": 1.0,
+     "used": true,
+     "reasons": []
+    },
+    {
+     "input": "devices",
+     "source_file": "devices.csv",
+     "sheet_name": null,
+     "source_column": "scenario_id",
+     "canonical_role": "scenario_id",
+     "device_id": null,
+     "detected_unit": null,
+     "canonical_unit": null,
+     "conversion": null,
+     "confidence": 1.0,
+     "used": true,
+     "reasons": []
+    },
+    {
+     "input": "devices",
+     "source_file": "devices.csv",
+     "sheet_name": null,
+     "source_column": "synthetic",
+     "canonical_role": "synthetic_flag",
+     "device_id": null,
+     "detected_unit": null,
+     "canonical_unit": null,
+     "conversion": null,
+     "confidence": 1.0,
+     "used": true,
+     "reasons": []
+    },
+    {
+     "input": "devices",
+     "source_file": "devices.csv",
+     "sheet_name": null,
+     "source_column": "inverter_id",
+     "canonical_role": "device_id",
+     "device_id": null,
+     "detected_unit": null,
+     "canonical_unit": null,
+     "conversion": null,
+     "confidence": 1.0,
+     "used": true,
+     "reasons": []
+    },
+    {
+     "input": "devices",
+     "source_file": "devices.csv",
+     "sheet_name": null,
+     "source_column": "rated_ac_power_kw",
+     "canonical_role": "capacity",
+     "device_id": null,
+     "detected_unit": "kW",
+     "canonical_unit": "kW",
+     "conversion": "kW (no conversion)",
+     "confidence": 1.0,
+     "used": true,
+     "reasons": []
+    },
+    {
+     "input": "devices",
+     "source_file": "devices.csv",
+     "sheet_name": null,
+     "source_column": "rated_dc_power_kw",
+     "canonical_role": "dc_capacity",
+     "device_id": null,
+     "detected_unit": "kW",
+     "canonical_unit": "kW",
+     "conversion": "kW (no conversion)",
+     "confidence": 1.0,
+     "used": true,
+     "reasons": []
+    },
+    {
+     "input": "devices",
+     "source_file": "devices.csv",
+     "sheet_name": null,
+     "source_column": "inverter_efficiency",
+     "canonical_role": "inverter_efficiency",
+     "device_id": null,
+     "detected_unit": null,
+     "canonical_unit": null,
+     "conversion": null,
+     "confidence": 1.0,
+     "used": true,
+     "reasons": []
+    },
+    {
+     "input": "devices",
+     "source_file": "devices.csv",
+     "sheet_name": null,
+     "source_column": "dc_ac_ratio",
+     "canonical_role": "dc_ac_ratio",
+     "device_id": null,
+     "detected_unit": null,
+     "canonical_unit": null,
+     "conversion": null,
+     "confidence": 1.0,
+     "used": true,
+     "reasons": []
+    },
+    {
+     "input": "devices",
+     "source_file": "devices.csv",
+     "sheet_name": null,
+     "source_column": "module_temperature_coefficient_per_c",
+     "canonical_role": "temperature_coefficient",
+     "device_id": null,
+     "detected_unit": null,
+     "canonical_unit": null,
+     "conversion": null,
+     "confidence": 1.0,
+     "used": true,
+     "reasons": []
+    },
+    {
+     "input": "devices",
+     "source_file": "devices.csv",
+     "sheet_name": null,
+     "source_column": "system_losses_fraction",
+     "canonical_role": "system_losses",
+     "device_id": null,
+     "detected_unit": null,
+     "canonical_unit": null,
+     "conversion": null,
+     "confidence": 1.0,
+     "used": true,
+     "reasons": []
+    },
+    {
+     "input": "devices",
+     "source_file": "devices.csv",
+     "sheet_name": null,
+     "source_column": "latitude_deg",
+     "canonical_role": "latitude",
+     "device_id": null,
+     "detected_unit": null,
+     "canonical_unit": null,
+     "conversion": null,
+     "confidence": 1.0,
+     "used": true,
+     "reasons": []
+    },
+    {
+     "input": "devices",
+     "source_file": "devices.csv",
+     "sheet_name": null,
+     "source_column": "longitude_deg",
+     "canonical_role": "longitude",
+     "device_id": null,
+     "detected_unit": null,
+     "canonical_unit": null,
+     "conversion": null,
+     "confidence": 1.0,
+     "used": true,
+     "reasons": []
+    },
+    {
+     "input": "forecast",
+     "source_file": "forecast.csv",
+     "sheet_name": null,
+     "source_column": "scenario_id",
+     "canonical_role": "scenario_id",
+     "device_id": null,
+     "detected_unit": null,
+     "canonical_unit": null,
+     "conversion": null,
+     "confidence": 1.0,
+     "used": true,
+     "reasons": []
+    },
+    {
+     "input": "forecast",
+     "source_file": "forecast.csv",
+     "sheet_name": null,
+     "source_column": "synthetic",
+     "canonical_role": "synthetic_flag",
+     "device_id": null,
+     "detected_unit": null,
+     "canonical_unit": null,
+     "conversion": null,
+     "confidence": 1.0,
+     "used": true,
+     "reasons": []
+    },
+    {
+     "input": "forecast",
+     "source_file": "forecast.csv",
+     "sheet_name": null,
+     "source_column": "timestamp_utc",
+     "canonical_role": "timestamp",
+     "device_id": null,
+     "detected_unit": null,
+     "canonical_unit": null,
+     "conversion": null,
+     "confidence": 1.0,
+     "used": true,
+     "reasons": []
+    },
+    {
+     "input": "forecast",
+     "source_file": "forecast.csv",
+     "sheet_name": null,
+     "source_column": "forecast_ghi_w_m2",
+     "canonical_role": null,
+     "device_id": null,
+     "detected_unit": null,
+     "canonical_unit": null,
+     "conversion": null,
+     "confidence": 0.0,
+     "used": false,
+     "reasons": [
+      "No vocabulary match above the minimum score."
+     ]
+    },
+    {
+     "input": "forecast",
+     "source_file": "forecast.csv",
+     "sheet_name": null,
+     "source_column": "forecast_poa_irradiance_w_m2",
+     "canonical_role": "forecast_poa",
+     "device_id": null,
+     "detected_unit": "W/m2",
+     "canonical_unit": "W/m2",
+     "conversion": "W/m2 (no conversion)",
+     "confidence": 1.0,
+     "used": true,
+     "reasons": []
+    },
+    {
+     "input": "forecast",
+     "source_file": "forecast.csv",
+     "sheet_name": null,
+     "source_column": "forecast_ambient_temperature_c",
+     "canonical_role": null,
+     "device_id": null,
+     "detected_unit": null,
+     "canonical_unit": null,
+     "conversion": null,
+     "confidence": 0.0,
+     "used": false,
+     "reasons": [
+      "No vocabulary match above the minimum score."
+     ]
+    },
+    {
+     "input": "forecast",
+     "source_file": "forecast.csv",
+     "sheet_name": null,
+     "source_column": "forecast_ac_power_kw",
+     "canonical_role": "forecast_power",
+     "device_id": null,
+     "detected_unit": "kW",
+     "canonical_unit": "kW",
+     "conversion": "kW (no conversion)",
+     "confidence": 1.0,
+     "used": true,
+     "reasons": []
+    },
+    {
+     "input": "forecast",
+     "source_file": "forecast.csv",
+     "sheet_name": null,
+     "source_column": "forecast_energy_kwh",
+     "canonical_role": "forecast_energy",
+     "device_id": null,
+     "detected_unit": "kWh",
+     "canonical_unit": "kWh",
+     "conversion": "kWh (no conversion)",
+     "confidence": 1.0,
+     "used": true,
+     "reasons": []
+    }
+   ],
+   "input_roles": [
+    {
+     "role": "operating",
+     "status": "used",
+     "source_file": "operating_data.csv",
+     "sheet_name": null,
+     "mapped_fields": 10,
+     "unresolved_fields": [],
+     "reason": null
+    },
+    {
+     "role": "weather",
+     "status": "used",
+     "source_file": "weather.csv",
+     "sheet_name": null,
+     "mapped_fields": 10,
+     "unresolved_fields": [
+      "wind_speed_m_s"
+     ],
+     "reason": null,
+     "coverage": 1.0
+    },
+    {
+     "role": "devices",
+     "status": "used",
+     "source_file": "devices.csv",
+     "sheet_name": null,
+     "mapped_fields": 11,
+     "unresolved_fields": [],
+     "reason": null
+    },
+    {
+     "role": "forecast",
+     "status": "used",
+     "source_file": "forecast.csv",
+     "sheet_name": null,
+     "mapped_fields": 6,
+     "unresolved_fields": [
+      "forecast_ghi_w_m2",
+      "forecast_ambient_temperature_c"
+     ],
+     "reason": null
+    },
+    {
+     "role": "event_log",
+     "status": "not_supplied",
+     "source_file": null,
+     "sheet_name": null,
+     "mapped_fields": 0,
+     "unresolved_fields": [],
+     "reason": null
+    }
+   ],
+   "anomaly_runs": [
+    {
+     "device_id": "INV-02",
+     "start_utc": "2024-01-08T11:50:00+00:00",
+     "end_utc": "2024-01-08T13:30:00+00:00",
+     "intervals": 11,
+     "checks": [
+      "cumulative_shortfall",
+      "peer_output_deviation",
+      "residual_shortfall"
+     ],
+     "overlapping_events": []
+    }
+   ]
+  },
+  "analysis_mode": "full"
+ }
+}
