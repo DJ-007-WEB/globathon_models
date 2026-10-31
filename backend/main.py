@@ -212,7 +212,7 @@ def _compact_ml_for_llm(result: dict) -> dict:
         for key in (
             "schema_version", "analysis_status", "analysis_mode", "summary", "request",
             "interval", "energy", "device_performance", "forecast_energy", "expected_energy", "actual_energy",
-            "deviation", "waterfall", "data_quality", "capabilities", "units",
+            "deviation", "expected_deviation", "expected_deviation_kwh", "waterfall", "data_quality", "capabilities", "units",
             "model_version", "mapping_version", "config_version", "vocab_version",
             "method", "model_status",
         )
