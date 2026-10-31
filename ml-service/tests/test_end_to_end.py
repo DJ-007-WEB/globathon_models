@@ -104,3 +104,50 @@ def test_multiple_scenarios_are_rejected_instead_of_aggregated():
     assert error["field"] == "scenario_id"
     assert error["details"]["scenario_count"] == 2
     assert result["actual_energy"] is None
+
+def test_stress_dataset_headers_produce_actual_and_expected_energy_without_forecast(tmp_path):
+    import pandas as pd
+
+    from src.service import analyze
+
+    path = tmp_path / "solar_plant_30day_stress.csv"
+    pd.DataFrame([
+        {
+            "timestamp_utc": "2026-09-01T06:45:00Z",
+            "inverter_id": "INV-01",
+            "ac_power_kw": 2.215613,
+            "dc_power_kw": 2.284137,
+            "poa_irradiance_w_m2": 16.979303,
+            "ghi_w_m2": 17.235296,
+            "module_temperature_c": 17.0,
+            "ambient_temperature_c": 16.0,
+            "energy_kwh": 0.553903,
+            "rated_ac_power_kw": 250.0,
+            "dc_capacity_kw": 300.0,
+            "inverter_efficiency": 0.975,
+            "availability_status": "NIGHT",
+        },
+        {
+            "timestamp_utc": "2026-09-01T07:00:00Z",
+            "inverter_id": "INV-01",
+            "ac_power_kw": 5.061777,
+            "dc_power_kw": 5.218327,
+            "poa_irradiance_w_m2": 38.878586,
+            "ghi_w_m2": 38.488676,
+            "module_temperature_c": 17.3,
+            "ambient_temperature_c": 16.1,
+            "energy_kwh": 1.265444,
+            "rated_ac_power_kw": 250.0,
+            "dc_capacity_kw": 300.0,
+            "inverter_efficiency": 0.975,
+            "availability_status": "NORMAL",
+        },
+    ]).to_csv(path, index=False)
+
+    result = analyze(path, mode="full")
+
+    assert result["actual_energy"] == pytest.approx(1.819347, abs=1e-6)
+    assert result["expected_energy"] is not None
+    assert result["energy"]["actual"]["status"] == "available"
+    assert result["waterfall"]["status"] == "unavailable"
+    assert result["waterfall"]["forecast_energy_kwh"] is None
