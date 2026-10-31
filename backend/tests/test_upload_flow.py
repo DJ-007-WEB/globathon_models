@@ -21,6 +21,7 @@ VALID_ML = {
     "analysis_mode": "full",
     "summary": "ML calculated actual and expected energy.",
     "energy": {"actual": {"value_kwh": 12.5}},
+    "device_performance": [{"device_id": "INV-01", "actual_energy_kwh": 12.5}],
     "limitations": ["Forecast input unavailable."],
 }
 
@@ -67,6 +68,7 @@ def test_upload_runs_ml_before_llm_and_returns_unchanged_ml(monkeypatch):
     assert [event[0] for event in events] == ["ml", "llm"]
     assert events[0][1] == "operating.csv"
     assert events[1][1]["energy"] == VALID_ML["energy"]
+    assert events[1][1]["device_performance"] == VALID_ML["device_performance"]
     assert body["ml_analysis"] == VALID_ML
     assert body["analysis"]["summary"].startswith("The ML result")
     assert body["analysis_mode"] == "full"
