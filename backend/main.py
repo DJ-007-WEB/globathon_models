@@ -841,6 +841,12 @@ async def ready() -> dict:
             llm_prompt_tokens = data.get("last_prompt_tokens")
         except (httpx.HTTPError, ValueError):
             pass
+    if ENVIRONMENT == "production":
+        # Never relay internal exception text, raw model output or model paths to the browser.
+        if llm_error:
+            logger.warning("LLM readiness error: %s", llm_error)
+            llm_error = "The local AI model is not ready. Check the LLM service logs."
+        llm_model_name = None
     is_ready = (
         checks["ml_service_reachable"]
         and checks["llm_api_reachable"]

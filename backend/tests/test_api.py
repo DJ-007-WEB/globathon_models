@@ -520,3 +520,33 @@ def test_deterministic_fallback_answers_device_questions_from_saved_device_total
     assert "Device INV-02: measured 10.0 kWh, expected 19.0 kWh, measured minus expected -9.0 kWh." in answer["observations"]
     assert "Measured minus expected energy: -10.0 kWh." in answer["observations"]
     assert answer["possible_causes"] == []
+
+
+def test_production_ready_does_not_relay_internal_llm_error_details(monkeypatch):
+    class Response:
+        def __init__(self, payload):
+            self.payload = payload
+        def raise_for_status(self):
+            return None
+        def json(self):
+            return self.payload
+
+    class Client:
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *args):
+            return None
+        async def get(self, url):
+            if "ml" in url:
+                return Response({"status": "ready"})
+            return Response({"status": "not_ready", "model_loaded": True, "model_name": "/models/secret-path",
+                             "last_inference_error": "ValueError: raw output start: '{\"summary\"'"})
+
+    monkeypatch.setattr(main.httpx, "AsyncClient", lambda **kwargs: Client())
+    monkeypatch.setattr(main, "ML_API_URL", "http://ml:8002")
+    monkeypatch.setattr(main, "LLM_API_URL", "http://llm:8000")
+    monkeypatch.setattr(main, "ENVIRONMENT", "production")
+    body = asyncio.run(main.ready())
+    assert body["status"] == "degraded"
+    assert "raw output" not in body["llm_error"]
+    assert body["llm_model_name"] is None
