@@ -23,7 +23,8 @@ def test_upload_calls_existing_pipeline(monkeypatch):
 
     def fake_pipeline(path, output_path=None, **kwargs):
         captured.update(kwargs)
-        with open(path, "rb") as handle:
+        assert Path(path).is_dir()
+        with open(Path(path) / "operating_plant.csv", "rb") as handle:
             captured["content"] = handle.read()
         return {"schema_version": "2.0.0", "analysis_status": "partial", "analysis_mode": "snapshot"}
 
@@ -162,3 +163,26 @@ def test_service_token_accepts_valid_header(monkeypatch):
             headers={"X-Service-Token": "test-secret"},
         )
     assert response.status_code == 200, response.text
+
+def test_upload_passes_optional_context_files_as_named_directory_inputs(monkeypatch):
+    captured = {}
+
+    def fake_pipeline(path, output_path=None, **kwargs):
+        captured["path"] = Path(path)
+        captured["files"] = sorted(item.name for item in Path(path).iterdir())
+        return {"schema_version": "2.1.0", "analysis_status": "partial", "analysis_mode": "full"}
+
+    monkeypatch.setattr(api, "run_pipeline", fake_pipeline)
+    with TestClient(api.app) as client:
+        response = client.post(
+            "/api/v1/analyze",
+            files={
+                "file": ("plant.csv", CSV, "text/csv"),
+                "forecast_file": ("forecast.csv", b"timestamp,forecast_energy_kwh\\n2026-10-30T10:00:00Z,15\\n", "text/csv"),
+                "weather_file": ("weather.csv", b"timestamp,poa_irradiance_w_m2\\n2026-10-30T10:00:00Z,800\\n", "text/csv"),
+            },
+        )
+    assert response.status_code == 200, response.text
+    assert "operating_plant.csv" in captured["files"]
+    assert "forecast_forecast.csv" in captured["files"]
+    assert "weather_weather.csv" in captured["files"]
