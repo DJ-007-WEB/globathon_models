@@ -1755,6 +1755,21 @@ def _analyze_bundle(
     )
     warnings = list(bundle.warnings) + context_warnings
 
+    # A single analysis represents one plant operating scenario. Combining
+    # multiple scenario IDs would silently add independent simulations into
+    # the same energy totals and peer comparisons, so fail with an actionable
+    # validation error instead of returning misleading aggregate metrics.
+    if "scenario_id" in context.columns:
+        scenario_ids = context["scenario_id"].dropna().astype(str).str.strip()
+        scenario_ids = scenario_ids[scenario_ids.ne("")].unique().tolist()
+        if len(scenario_ids) > 1:
+            raise AnalysisError(
+                "MULTIPLE_SCENARIOS_UNSUPPORTED",
+                "This upload contains multiple scenario IDs. Upload one scenario at a time so energy totals and inverter comparisons are not mixed.",
+                field="scenario_id",
+                details={"scenario_ids": scenario_ids[:20], "scenario_count": len(scenario_ids)},
+            )
+
     # Keep the source's synthetic-data marker visible in the final report.
     # Synthetic scenarios are useful for integration checks, not real-world
     # prediction-accuracy claims.
