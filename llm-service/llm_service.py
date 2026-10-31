@@ -216,6 +216,54 @@ class LLMService:
         } else "insufficient_evidence"
         return normalized
 
+    @staticmethod
+    def _coerce_response(data: dict[str, Any], request: AnalysisRequest) -> dict[str, Any]:
+        """Repair common small-model shape errors without inventing ML facts."""
+        allowed = {
+            "summary", "observations", "possible_causes", "supporting_evidence",
+            "recommended_checks", "limitations", "confidence",
+        }
+        result = {key: data.get(key) for key in allowed if key in data}
+
+        def as_strings(value: Any) -> list[str]:
+            if value is None:
+                return []
+            if isinstance(value, str):
+                return [value.strip()] if value.strip() else []
+            if isinstance(value, list):
+                return [str(item).strip() for item in value
+                        if isinstance(item, (str, int, float)) and str(item).strip()]
+            return []
+
+        for field in ("observations", "possible_causes", "supporting_evidence",
+                      "recommended_checks", "limitations"):
+            result[field] = as_strings(result.get(field))
+
+        summary = result.get("summary")
+        if not isinstance(summary, str) or not summary.strip():
+            source = request.observations.get("summary") or request.ml_results.get("summary")
+            status = request.observations.get("analysis_status") or request.ml_results.get("analysis_status")
+            if isinstance(source, str) and source.strip():
+                summary = source.strip()
+                if status:
+                    summary = f"Analysis status: {status}. {summary}"
+            else:
+                summary = (
+                    "The deterministic analysis was received, but the language model "
+                    "did not provide a complete explanation. Review the measured findings "
+                    "and limitations below."
+                )
+        result["summary"] = summary[:12000]
+
+        confidence = str(result.get("confidence") or "insufficient_evidence").strip().lower()
+        confidence = confidence.replace(" ", "_")
+        aliases = {"medium": "moderate", "very_high": "high", "unknown": "insufficient_evidence"}
+        confidence = aliases.get(confidence, confidence)
+        result["confidence"] = confidence if confidence in {
+            "low", "moderate", "high", "insufficient_evidence"
+        } else "insufficient_evidence"
+        return result
+
     def analyze(self, request: AnalysisRequest) -> AnalysisResponse:
         self._load()
         user_payload = self._build_user_payload(request)
@@ -231,8 +279,9 @@ class LLMService:
             prompt = f"System:\n{SYSTEM_PROMPT}\n\nUser:\n{user_payload}\n\nAssistant JSON:\n"
 
         import torch
-        with self._generation_lock, torch.inference_mode():
-            inputs = self.tokenizer(prompt, return_tensors="pt", truncation=True, max_length=8192)
+
+        def generate(text: str) -> str:
+            inputs = self.tokenizer(text, return_tensors="pt", truncation=True, max_length=8192)
             device = self.model.get_input_embeddings().weight.device
             inputs = {key: value.to(device) for key, value in inputs.items()}
             generated = self.model.generate(
@@ -243,10 +292,33 @@ class LLMService:
                 eos_token_id=self.tokenizer.eos_token_id,
             )
             output_tokens = generated[0][inputs["input_ids"].shape[1]:]
-            output_text = self.tokenizer.decode(output_tokens, skip_special_tokens=True)
+            return self.tokenizer.decode(output_tokens, skip_special_tokens=True).strip()
 
-        data = self._normalize_response(self._extract_json(output_text))
-        try:
-            return AnalysisResponse.model_validate(data)
-        except Exception as exc:
-            raise ValueError("Model output did not match the required explanation schema.") from exc
+        last_error: Exception | None = None
+        with self._generation_lock, torch.inference_mode():
+            for attempt in range(2):
+                try:
+                    attempt_prompt = prompt
+                    if attempt:
+                        attempt_prompt += (
+                            "\n\nYour previous response was invalid. Return ONE complete JSON object only. "
+                            "Use exactly these keys: summary, observations, possible_causes, "
+                            "supporting_evidence, recommended_checks, limitations, confidence. "
+                            "All five list fields must be JSON arrays of strings. confidence must be "
+                            "low, moderate, high, or insufficient_evidence. Do not add commentary."
+                        )
+                    raw = generate(attempt_prompt)
+                    parsed = self._extract_json(raw)
+                    normalized = self._normalize_response(parsed)
+                    repaired = self._coerce_response(normalized, request)
+                    response = AnalysisResponse.model_validate(repaired)
+                    self.last_inference_error = None
+                    return response
+                except Exception as exc:
+                    last_error = exc
+
+        self.last_inference_error = (
+            f"Inference failed after retry: {type(last_error).__name__}: {last_error}"
+            if last_error else "Inference failed."
+        )
+        raise ValueError("Model output could not be repaired to the required explanation schema.") from last_error
