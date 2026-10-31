@@ -86,6 +86,10 @@ async def ready() -> dict:
 @app.post("/api/v1/analyze")
 async def analyze_upload(
     file: UploadFile = File(...),
+    weather_file: UploadFile | None = File(None),
+    forecast_file: UploadFile | None = File(None),
+    devices_file: UploadFile | None = File(None),
+    event_log_file: UploadFile | None = File(None),
     plant_id: str = Form("unknown-plant"),
     mode: Literal["auto", "snapshot", "full"] = Form("auto"),
     timezone: str | None = Form(None),
@@ -95,64 +99,72 @@ async def analyze_upload(
 ) -> dict:
     require_service_token(x_service_token)
 
-    filename = Path((file.filename or "dataset").replace(chr(92), "/")).name
-    suffix = Path(filename).suffix.lower()
-    if suffix not in {".csv", ".xlsx"}:
-        await file.close()
-        raise HTTPException(status_code=415, detail="Only CSV and XLSX operating-data files are supported.")
     if interval_minutes is not None and (not math.isfinite(interval_minutes) or interval_minutes <= 0):
-        await file.close()
         raise HTTPException(status_code=422, detail="interval_minutes must be a finite number greater than zero.")
     plant_id = plant_id.strip() or "unknown-plant"
     if len(plant_id) > 128 or (timezone is not None and len(timezone) > 64) or (sheet_name is not None and len(sheet_name) > 128):
-        await file.close()
         raise HTTPException(status_code=422, detail="One or more analysis options exceed the allowed length.")
 
-    try:
-        content = await file.read(MAX_UPLOAD_BYTES + 1)
-    finally:
-        await file.close()
-    if not content:
-        raise HTTPException(status_code=422, detail="The uploaded file is empty.")
-    if len(content) > MAX_UPLOAD_BYTES:
-        raise HTTPException(status_code=413, detail=f"Upload exceeds the {MAX_UPLOAD_BYTES // (1024 * 1024)} MiB limit.")
-    validate_upload(filename, content)
+    uploads = {
+        "operating": file,
+        "weather": weather_file,
+        "forecast": forecast_file,
+        "devices": devices_file,
+        "event": event_log_file,
+    }
+    contents: list[tuple[str, bytes]] = []
+    total_size = 0
+    for role, upload in uploads.items():
+        if upload is None:
+            continue
+        filename = Path((upload.filename or "dataset").replace(chr(92), "/")).name
+        suffix = Path(filename).suffix.lower()
+        if suffix not in {".csv", ".xlsx"}:
+            await upload.close()
+            raise HTTPException(status_code=415, detail="All analysis inputs must be CSV or XLSX files.")
+        try:
+            content = await upload.read(MAX_UPLOAD_BYTES + 1)
+        finally:
+            await upload.close()
+        if not content:
+            if role == "operating":
+                raise HTTPException(status_code=422, detail="The operating-data file is empty.")
+            raise HTTPException(status_code=422, detail=f"The optional {role} file is empty.")
+        total_size += len(content)
+        if total_size > MAX_UPLOAD_BYTES:
+            raise HTTPException(status_code=413, detail=f"Combined upload exceeds the {MAX_UPLOAD_BYTES // (1024 * 1024)} MiB limit.")
+        validate_upload(filename, content)
+        prefix = "event_log" if role == "event" else role
+        contents.append((f"{prefix}_{filename}", content))
 
     try:
         await asyncio.wait_for(ANALYSIS_SLOTS.acquire(), timeout=0.1)
     except asyncio.TimeoutError as exc:
         raise HTTPException(status_code=429, detail="ML analysis capacity is busy. Retry shortly.") from exc
 
-    temp_path: str | None = None
     try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as handle:
-            handle.write(content)
-            temp_path = handle.name
-        try:
-            result = await run_in_threadpool(
-                run_pipeline,
-                temp_path,
-                None,
-                mode=mode,
-                timezone=timezone,
-                interval_minutes=interval_minutes,
-                plant_id=plant_id,
-                sheet_name=sheet_name,
-            )
-        except HTTPException:
-            raise
-        except Exception as exc:
-            # Keep parser paths, stack traces and raw plant data out of responses.
-            raise HTTPException(status_code=500, detail="The deterministic ML pipeline could not complete this analysis.") from exc
-        if not isinstance(result, dict):
-            raise HTTPException(status_code=502, detail="The ML pipeline returned an invalid result.")
-        if result.get("analysis_status") not in {"success", "partial", "invalid_input", "failed"}:
-            raise HTTPException(status_code=502, detail="The ML pipeline returned an unknown analysis status.")
-        return result
-    finally:
-        if temp_path:
+        with tempfile.TemporaryDirectory(prefix="solarsleuth-ml-") as temp_dir:
+            for filename, content in contents:
+                (Path(temp_dir) / filename).write_bytes(content)
             try:
-                os.unlink(temp_path)
-            except FileNotFoundError:
-                pass
+                result = await run_in_threadpool(
+                    run_pipeline,
+                    temp_dir,
+                    None,
+                    mode=mode,
+                    timezone=timezone,
+                    interval_minutes=interval_minutes,
+                    plant_id=plant_id,
+                    sheet_name=sheet_name,
+                )
+            except HTTPException:
+                raise
+            except Exception as exc:
+                raise HTTPException(status_code=500, detail="The deterministic ML pipeline could not complete this analysis.") from exc
+            if not isinstance(result, dict):
+                raise HTTPException(status_code=502, detail="The ML pipeline returned an invalid result.")
+            if result.get("analysis_status") not in {"success", "partial", "invalid_input", "failed"}:
+                raise HTTPException(status_code=502, detail="The ML pipeline returned an unknown analysis status.")
+            return result
+    finally:
         ANALYSIS_SLOTS.release()
