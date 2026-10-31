@@ -211,7 +211,7 @@ def _compact_ml_for_llm(result: dict) -> dict:
         key: result[key]
         for key in (
             "schema_version", "analysis_status", "analysis_mode", "summary", "request",
-            "interval", "energy", "forecast_energy", "expected_energy", "actual_energy",
+            "interval", "energy", "device_performance", "forecast_energy", "expected_energy", "actual_energy",
             "deviation", "waterfall", "data_quality", "capabilities", "units",
             "model_version", "mapping_version", "config_version", "vocab_version",
             "method", "model_status",
@@ -219,7 +219,7 @@ def _compact_ml_for_llm(result: dict) -> dict:
         if key in result
     }
     for key, limit in (
-        ("anomalies", 12), ("hypotheses", 12), ("evidence", 30),
+        ("device_performance", 20), ("anomalies", 12), ("hypotheses", 12), ("evidence", 30),
         ("limitations", 30), ("unresolved_fields", 30),
         ("missing_required_fields", 30), ("errors", 10),
     ):
