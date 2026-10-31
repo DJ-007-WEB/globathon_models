@@ -80,6 +80,20 @@ const pretty = (value: string) => value.replaceAll("_", " ").replace(/\b\w/g, (c
 const listOrFallback = (items?: string[], fallback = "No details were returned for this section.") =>
   items?.length ? items : [fallback];
 
+function renderSafeMarkdown(source: string) {
+  const inline = (value: string) => value.split(/(\\*\\*[^*]+\\*\\*)/g).map((part, index) =>
+    part.startsWith("**") && part.endsWith("**")
+      ? <strong key={index}>{part.slice(2, -2)}</strong>
+      : part
+  );
+  return source.split(/\\r?\\n/).map((line, index) => {
+    if (line.startsWith("### ")) return <h4 key={index}>{inline(line.slice(4))}</h4>;
+    if (line.startsWith("- ")) return <div className="chat-markdown-list-item" key={index}>• {inline(line.slice(2))}</div>;
+    if (!line.trim()) return <div className="chat-markdown-spacer" key={index}/>;
+    return <p key={index}>{inline(line)}</p>;
+  });
+}
+
 function BrandMark() {
   return <span className="brand-mark"><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M20 4 5 12.5v15L20 36l15-8.5v-15L20 4Z" fill="none" stroke="currentColor" strokeWidth="1.7"/><path d="M20 10v20M10 15.5l20 9M10 24.5l20-9" stroke="currentColor" strokeWidth="1.5"/><circle cx="20" cy="20" r="4" fill="currentColor"/></svg></span>;
 }
@@ -527,7 +541,7 @@ export default function App() {
           <div className="chat-context-note"><span className="live-dot"/> In context: <strong>{plants.find(p=>p.plant_id===latestTurn.result?.plant_id)?.name||latestTurn.result.plant_id||"Selected plant"}</strong><span>·</span>{latestTurn.question.replace("Dataset analysis: ","")}</div>
           <div className="chat-thread" aria-live="polite">
             {chatMessages.length===0&&<div className="chat-welcome"><span className="assistant-mark">✳</span><div><strong>SolarSleuth</strong><p>I've got the selected plant analysis in context. Ask me to explain a deviation, trace evidence behind a finding, or suggest what to verify next.</p><div className="chat-prompts">{["What is driving the energy deviation?","Which findings have the strongest evidence?","What should the site operator check first?"].map(question=><button key={question} type="button" onClick={()=>setChatInput(question)}>{question}<span>↗</span></button>)}</div></div></div>}
-            {chatMessages.map((message,index)=><article className={"chat-turn "+message.role} key={message.created_at||index}>{message.role==="assistant"&&<span className="assistant-mark">✳</span>}<div className="chat-bubble">{message.role==="user"?<p>{typeof message.content==="string"?message.content:displayValue(message.content)}</p>:typeof message.content==="string"?<p className="chat-answer-text">{message.content}</p>:<AnalysisResponse result={{analysis:message.content as Analysis,plant_id:latestTurn.result?.plant_id}}/>}</div></article>)}
+            {chatMessages.map((message,index)=><article className={"chat-turn "+message.role} key={message.created_at||index}>{message.role==="assistant"&&<span className="assistant-mark">✳</span>}<div className="chat-bubble">{message.role==="user"?<p>{typeof message.content==="string"?message.content:displayValue(message.content)}</p>:typeof message.content==="string"?<div className="chat-answer-text">{renderSafeMarkdown(message.content)}</div>:<AnalysisResponse result={{analysis:message.content as Analysis,plant_id:latestTurn.result?.plant_id}}/>}</div></article>)}
             {chatBusy&&<article className="chat-turn assistant"><span className="assistant-mark">✳</span><div className="typing-bubble"><i/><i/><i/><span>Reviewing plant evidence</span></div></article>}
           </div>
           <form className="chat-composer" onSubmit={sendFollowUp}><textarea aria-label="Ask a question about this plant" rows={1} maxLength={2000} value={chatInput} onChange={e=>setChatInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();void sendFollowUp(e as any)}}} placeholder="Ask anything about this plant's analysis…" disabled={chatBusy}/><button type="submit" aria-label="Send message" disabled={chatBusy||!chatInput.trim()}>↑</button><small>Enter to send · Shift + Enter for a new line</small></form>
