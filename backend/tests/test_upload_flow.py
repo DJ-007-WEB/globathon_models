@@ -137,3 +137,35 @@ def test_upload_rejects_empty_and_oversized(monkeypatch):
         large = client.post("/api/v1/analyze/upload", files={"file": ("plant.csv", b"timestamp,power", "text/csv")})
     assert empty.status_code == 422
     assert large.status_code == 413
+
+
+def test_ml_validation_error_is_preserved_for_the_upload_user(monkeypatch):
+    from fastapi import HTTPException
+    import asyncio
+
+    class Response:
+        status_code = 200
+        def json(self):
+            return {
+                "analysis_status": "invalid_input",
+                "errors": [{
+                    "code": "MULTIPLE_SCENARIOS_UNSUPPORTED",
+                    "message": "Upload one scenario at a time; multiple scenario IDs cannot be combined.",
+                    "field": "scenario_id",
+                }],
+            }
+
+    async def fake_request_service(*args, **kwargs):
+        return Response()
+
+    monkeypatch.setattr(main, "_request_service", fake_request_service)
+    with pytest.raises(HTTPException) as rejected:
+        asyncio.run(main._run_ml(
+            b"timestamp_utc,scenario_id\n2026-01-01T00:00:00Z,a",
+            "plant.csv", plant_id="plant-1", mode="full", timezone=None,
+            interval_minutes=None, sheet_name=None,
+        ))
+
+    assert rejected.value.status_code == 422
+    assert "Upload one scenario at a time" in rejected.value.detail
+    assert "scenario_id" in rejected.value.detail
