@@ -547,6 +547,71 @@ async def get_analysis_chat(request_id: str,
 
 
 @app.post("/api/v1/analyses/{request_id}/chat")
+def _fallback_chat_answer(question: str, ml_result: dict, prior_explanation: dict | None = None) -> dict:
+    """Answer from saved deterministic evidence when local LLM inference is unavailable."""
+    question_text = question.strip().lower()
+    energy = ml_result.get("energy") if isinstance(ml_result.get("energy"), dict) else {}
+    observations: list[str] = []
+    limitations: list[str] = [
+        "The local language model was unavailable; this response is assembled from the saved deterministic ML report."
+    ]
+
+    labels = (("forecast", "Forecast energy"), ("expected", "Expected energy"),
+              ("actual", "Measured actual energy"), ("deviation", "Actual minus forecast"))
+    energy_values = []
+    for key, label in labels:
+        component = energy.get(key) if isinstance(energy.get(key), dict) else {}
+        value = component.get("value_kwh")
+        reason = component.get("reason")
+        if value is not None:
+            observations.append(f"{label}: {value} kWh.")
+            energy_values.append(f"{label.lower()} is {value} kWh")
+        elif reason:
+            observations.append(f"{label} is unavailable: {reason}")
+            limitations.append(f"{label}: {reason}")
+
+    anomalies = ml_result.get("anomalies") if isinstance(ml_result.get("anomalies"), list) else []
+    hypotheses = ml_result.get("hypotheses") if isinstance(ml_result.get("hypotheses"), list) else []
+    if any(term in question_text for term in ("anomal", "inverter", "fault", "device", "underperform")):
+        for item in anomalies[:8]:
+            if isinstance(item, dict) and item.get("message"):
+                observations.append(str(item["message"]))
+        for item in hypotheses[:8]:
+            if isinstance(item, dict):
+                text = item.get("summary") or item.get("hypothesis") or item.get("message")
+                if text:
+                    observations.append(f"Candidate explanation (not a confirmed cause): {text}")
+    elif not observations:
+        summary = ml_result.get("summary")
+        if isinstance(summary, str) and summary.strip():
+            observations.append(summary.strip())
+
+    if not anomalies and not hypotheses:
+        limitations.append("The saved report does not contain a supported anomaly or root-cause hypothesis.")
+    existing_limitations = ml_result.get("limitations")
+    if isinstance(existing_limitations, list):
+        limitations.extend(str(item) for item in existing_limitations[:8] if item)
+
+    if energy_values and any(term in question_text for term in ("forecast", "waterfall", "deviation", "energy", "generation")):
+        summary = "Based on the saved ML report, " + "; ".join(energy_values) + "."
+    elif observations:
+        summary = "Based on the saved deterministic analysis: " + " ".join(observations[:3])
+    else:
+        summary = "The saved analysis is available, but it does not contain enough evidence to answer this question reliably."
+
+    prior_checks = (prior_explanation or {}).get("recommended_checks", [])
+    checks = [str(item) for item in prior_checks[:6] if item] if isinstance(prior_checks, list) else []
+    return {
+        "summary": summary,
+        "observations": observations[:10],
+        "possible_causes": [],
+        "supporting_evidence": [],
+        "recommended_checks": checks,
+        "limitations": list(dict.fromkeys(limitations))[:12],
+        "confidence": "insufficient_evidence",
+    }
+
+
 async def ask_about_analysis(request_id: str, payload: AnalysisChatPayload,
                              authorization: str | None = Header(None, alias="Authorization")) -> dict:
     account = _authorize_browser(authorization)
@@ -594,14 +659,23 @@ async def ask_about_analysis(request_id: str, payload: AnalysisChatPayload,
         "ml_results": _compact_ml_for_llm(ml_result),
         "retrieved_context": context[-8:],
     }
-    explanation = await _post_llm(llm_payload)
+    model_name = "local-llm"
     try:
+        explanation = await _post_llm(llm_payload)
         validated = AnalyzeResponse.model_validate({
             **explanation, "request_id": request_id,
             "plant_id": document.get("plant_id", "unknown-plant"),
         })
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail="The local LLM returned an invalid follow-up response.") from exc
+        answer = validated.analysis.model_dump(mode="json")
+        model_name = validated.model
+    except HTTPException as exc:
+        if exc.status_code not in {502, 503, 504}:
+            raise
+        answer = _fallback_chat_answer(question, ml_result, saved.get("analysis"))
+        model_name = "deterministic-fallback"
+    except Exception:
+        answer = _fallback_chat_answer(question, ml_result, saved.get("analysis"))
+        model_name = "deterministic-fallback"
 
     now = datetime.now(timezone.utc)
     records = [
@@ -609,14 +683,14 @@ async def ask_about_analysis(request_id: str, payload: AnalysisChatPayload,
          "request_id": request_id, "role": "user", "content": question, "created_at": now},
         {"business_id": account["business_id"], "user_id": account["user_id"],
          "request_id": request_id, "role": "assistant",
-         "content": validated.analysis.model_dump(mode="json"), "created_at": now},
+         "content": answer, "created_at": now},
     ]
     try:
         await run_in_threadpool(db.analysis_messages.insert_many, records)
     except PyMongoError as exc:
         raise HTTPException(status_code=503, detail="The answer was generated but the conversation could not be saved.") from exc
-    return {"request_id": request_id, "answer": validated.analysis.model_dump(mode="json"),
-            "model": validated.model, "created_at": now.isoformat()}
+    return {"request_id": request_id, "answer": answer,
+            "model": model_name, "created_at": now.isoformat()}
 
 
 def _chat_answer_as_text(answer: dict) -> str:
