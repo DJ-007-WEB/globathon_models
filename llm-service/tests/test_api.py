@@ -209,71 +209,6 @@ def test_opt_in_startup_warmup_loads_model(monkeypatch):
     assert ready["model_loaded"] is True
     assert ready["model_name"] == "startup-test-model"
 
-def test_prompt_builder_preserves_ml_evidence_and_avoids_silent_truncation():
-    from llm_service import LLMService
-    from schemas import AnalysisRequest
-
-    class Tokenizer:
-        chat_template = None
-        @staticmethod
-        def encode(text, add_special_tokens=False):
-            return list(range(max(1, len(text) // 4)))
-
-    service = LLMService.__new__(LLMService)
-    service.tokenizer = Tokenizer()
-    service.max_input_tokens = 1800
-    request = AnalysisRequest(
-        plant_id="plant-1",
-        observations={"analysis_status": "partial", "summary": "ML completed."},
-        ml_results={
-            "analysis_status": "partial",
-            "energy": {
-                "actual": {"value_kwh": 123.45, "unit": "kWh"},
-                "expected": {"value_kwh": 150.0, "unit": "kWh"},
-                "forecast": {"value_kwh": None, "reason": "No forecast file was supplied."},
-            },
-            "expected_deviation_kwh": -26.55,
-            "evidence": ["long evidence item " + str(i) + " x" * 90 for i in range(100)],
-        },
-        retrieved_context=["old chat " + "x" * 1000 for _ in range(10)],
-    )
-    prompt, token_count = service._prepare_prompt(request)
-    assert token_count <= service.max_input_tokens
-    user_payload_start = prompt.index("\nUser:\n")
-    user_payload = prompt[user_payload_start:]
-    assert user_payload.index('"ml_results"') < user_payload.index('"observations"')
-    assert '"value_kwh":123.45' in prompt
-    assert '"expected_deviation_kwh":-26.55' in prompt
-    assert "No forecast file was supplied." in prompt
-    assert '"retrieved_context":[]' in prompt
-
-
-def test_prompt_builder_refuses_when_core_ml_payload_alone_exceeds_budget():
-    from llm_service import LLMService
-    from schemas import AnalysisRequest
-
-    class Tokenizer:
-        chat_template = None
-        @staticmethod
-        def encode(text, add_special_tokens=False):
-            return list(range(max(1, len(text) // 4)))
-
-    service = LLMService.__new__(LLMService)
-    service.tokenizer = Tokenizer()
-    service.max_input_tokens = 100
-    request = AnalysisRequest(
-        plant_id="plant-1",
-        observations={"summary": "x" * 5000},
-        ml_results={"energy": {"actual": {"value_kwh": 1.0}}},
-    )
-    try:
-        service._prepare_prompt(request)
-    except ValueError as exc:
-        assert "refusing to silently truncate" in str(exc).lower()
-    else:
-        raise AssertionError("Oversized prompts must fail explicitly, not be truncated.")
-
-
 def _grounding_request(**ml_overrides):
     from schemas import AnalysisRequest
 
@@ -331,38 +266,6 @@ def test_grounding_keeps_causes_backed_by_ml_hypotheses_and_lowers_failed_qualit
     assert result.confidence == "low"
 
 
-def test_identical_prompt_reuses_validated_explanation(monkeypatch):
-    import sys
-    import types
-    from llm_service import LLMService
-
-    service = LLMService(model_name=None, adapter_path="missing")
-    calls = []
-
-    class FakeTokenizer:
-        chat_template = None
-        pad_token_id = eos_token_id = 0
-
-        def encode(self, text, add_special_tokens=False):
-            return [0] * 10
-
-    service.tokenizer, service.model = FakeTokenizer(), object()
-    monkeypatch.setitem(sys.modules, "torch", types.SimpleNamespace(inference_mode=lambda: __import__("contextlib").nullcontext()))
-
-    def fake_finalize(raw, request):
-        calls.append(raw)
-        return AnalysisResponse(summary="Measured energy was 5374.12 kWh.")
-
-    service._finalize = fake_finalize
-    import hashlib
-    prompt, _ = service._prepare_prompt(_grounding_request())
-    key = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
-    service._response_cache[key] = AnalysisResponse(summary="cached answer")
-    result = service.analyze(_grounding_request())
-    assert result.summary == "cached answer"
-    assert calls == []
-
-
 def test_truncated_model_json_keeps_complete_fields_and_validates():
     from llm_service import LLMService
 
@@ -383,11 +286,145 @@ def test_truncated_json_never_treats_array_values_as_keys():
     assert LLMService._extract_json('{"summary": "S", "limit') == {"summary": "S"}
 
 
-def test_prompt_puts_follow_up_question_before_evidence():
+class _Tokenizer:
+    chat_template = None
+    pad_token_id = eos_token_id = 0
+
+    @staticmethod
+    def encode(text, add_special_tokens=False):
+        return list(range(max(1, len(text) // 4)))
+
+
+def _service(outputs, **kwargs):
+    """LLMService whose model returns the scripted outputs, recording each call."""
     from llm_service import LLMService
+
+    service = LLMService(model_name=None, adapter_path="unused", **kwargs)
+    service.tokenizer, service.model = _Tokenizer(), object()
+    service.calls = []
+
+    def run_model(text, *, use_adapter):
+        service.calls.append({"text": text, "adapter": use_adapter})
+        clean = outputs.pop(0) if outputs else ""
+        return clean, "<|im_end|>" if not clean else clean[:20], 1 if not clean else 50
+
+    service._run_model = run_model
+    return service
+
+
+def _rich_request(question=None):
     from schemas import AnalysisRequest
 
-    request = AnalysisRequest(plant_id="p", plant_context={"user_question": "Which inverter underperformed?"},
-                              observations={"analysis_status": "partial"}, ml_results={"actual_energy": 1.0})
-    payload = LLMService._build_user_payload(request)
-    assert payload.startswith('{"question_to_answer":"Which inverter underperformed?"')
+    return AnalysisRequest(
+        plant_id="plant-1",
+        plant_context={"user_question": question} if question else {},
+        observations={"analysis_status": "success"},
+        ml_results={
+            "analysis_status": "success",
+            "interval": {"start_utc": "2026-03-01T00:00:00+00:00", "end_utc": "2026-03-31T23:45:00+00:00",
+                         "device_count": 2, "row_count": 5952},
+            "energy": {"actual": {"value_kwh": 205884.98325}, "expected": {"value_kwh": 192644.5757},
+                       "forecast": {"value_kwh": None, "reason": "No forecast file was supplied."}},
+            "expected_deviation_kwh": 13240.4075,
+            "device_performance": [{"device_id": "INV2", "actual_energy_kwh": 102088.93,
+                                    "expected_energy_kwh": 96322.29, "deviation_kwh": 5766.64}],
+            "anomaly_summary": {"total_alerts": 16, "alerts_by_device": {"INV2": 16}},
+            "anomaly_runs": [{"device_id": "INV2", "start_utc": "2026-03-04T04:30:00+00:00",
+                              "end_utc": "2026-03-04T08:15:00+00:00", "intervals": 16,
+                              "overlapping_events": ["inverter_trip (INV2)"]}],
+            "hypotheses": [{"label": "Logged outage or curtailment", "devices": ["INV2"]}],
+            "data_quality": {"status": "pass"},
+        },
+    )
+
+
+def test_evidence_brief_is_plain_text_with_supplied_values_only():
+    from llm_service import LLMService
+
+    brief = LLMService._evidence_brief(_rich_request())
+    assert "measured energy 205,884.98 kWh" in brief
+    assert "forecast energy unavailable (No forecast file was supplied.)" in brief
+    assert "Inverter INV2: measured 102,088.93 kWh" in brief
+    assert "overlapping logged event inverter_trip (INV2)" in brief
+    assert "Logged outage or curtailment on INV2" in brief
+    assert "{" not in brief and "value_kwh" not in brief
+
+
+def test_adapter_is_prompted_in_its_training_format_with_the_question():
+    good = '{"summary": "INV2 was the only inverter with alerts, during its logged trip on 2026-03-04.", "confidence": "moderate"}'
+    service = _service([good])
+    result = service.analyze(_rich_request("Which inverter underperformed?"))
+    assert result.summary.startswith("INV2 was the only inverter")
+    first = service.calls[0]
+    assert first["adapter"] is True
+    assert "You are a solar plant analysis assistant." in first["text"]
+    assert "Answer this question about the solar plant performance case: Which inverter underperformed?" in first["text"]
+    assert "Plant observations: Analysis status: success." in first["text"]
+    assert service.last_generation_path == "adapter (training format)"
+
+
+def test_empty_adapter_output_falls_back_to_primed_then_base_model():
+    # Attempt 1 and 2 (adapter) return nothing; attempt 3 (base model) answers. The
+    # base attempt is primed with '{"summary": "', so the model continues from there.
+    base_continuation = 'Measured energy was 205,884.98 kWh, above expected.", "confidence": "moderate"}'
+    service = _service(["", "", base_continuation])
+    result = service.analyze(_rich_request())
+    assert result.summary == "Measured energy was 205,884.98 kWh, above expected."
+    assert [call["adapter"] for call in service.calls] == [True, True, False]
+    assert service.calls[1]["text"].endswith('{"summary": "')
+    assert service.last_inference_error is None
+    assert service.last_generation_path == "base model (adapter disabled)"
+
+
+def test_memorized_training_answers_are_rejected():
+    canned = '{"summary": "Low irradiance may explain part of the reduced output. Compare generation.", "confidence": "moderate"}'
+    real = 'INV2 had 16 alert intervals during its logged trip.", "confidence": "moderate"}'
+    service = _service([canned, canned[len('{"summary": "'):], real])
+    result = service.analyze(_rich_request())
+    assert result.summary == "INV2 had 16 alert intervals during its logged trip."
+
+
+def test_all_failed_attempts_are_reported_with_reasons():
+    import pytest
+
+    service = _service(["", "", ""])
+    with pytest.raises(ValueError):
+        service.analyze(_rich_request())
+    error = service.last_inference_error
+    assert error.startswith("All local generation attempts failed")
+    assert error.count("empty output") == 3
+    assert "base model (adapter disabled)" in error
+
+
+def test_time_budget_stops_further_attempts():
+    service = _service(["", "", ""], time_budget_seconds=0.0)
+    import pytest
+
+    with pytest.raises(ValueError):
+        service.analyze(_rich_request())
+    assert len(service.calls) == 1
+    assert "time budget" in service.last_inference_error
+
+
+def test_adapter_mode_base_skips_the_adapter():
+    service = _service(['ok answer about INV2.", "confidence": "low"}'], adapter_mode="base")
+    service.analyze(_rich_request())
+    assert [call["adapter"] for call in service.calls] == [False]
+
+
+def test_identical_requests_reuse_the_validated_explanation():
+    service = _service(['{"summary": "INV2 had alerts during its trip.", "confidence": "low"}'])
+    first = service.analyze(_rich_request("What happened?"))
+    second = service.analyze(_rich_request("What happened?"))
+    assert first == second and len(service.calls) == 1
+
+
+def test_oversized_brief_fails_explicitly():
+    import pytest
+
+    service = _service([], max_input_tokens=600)
+    request = _rich_request()
+    request.ml_results["limitations"] = ["x" * 3000] * 4
+    with pytest.raises(ValueError, match="too large"):
+        service.analyze(request)
+

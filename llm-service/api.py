@@ -21,6 +21,10 @@ SERVICE_TOKEN = os.getenv("INTERNAL_SERVICE_TOKEN")
 MAX_NEW_TOKENS = max(128, min(int(os.getenv("MAX_NEW_TOKENS", "700")), 1024))
 # Prompt budget; raise only if the model's context window and hardware allow it.
 MAX_INPUT_TOKENS = max(2048, min(int(os.getenv("MAX_INPUT_TOKENS", "7600")), 32768))
+# auto = fine-tuned adapter first, base model fallback; "adapter" or "base" pins one path.
+ADAPTER_MODE = os.getenv("LLM_ADAPTER_MODE", "auto").strip().lower()
+# Stop starting new generation attempts after this many seconds (backend waits LLM_TIMEOUT_SECONDS).
+TIME_BUDGET_SECONDS = float(os.getenv("LLM_TIME_BUDGET_SECONDS", "240"))
 
 
 WARMUP_ON_STARTUP = os.getenv("LLM_WARMUP_ON_STARTUP", "").strip().lower() in {"1", "true", "yes", "on"}
@@ -35,6 +39,8 @@ async def lifespan(app: FastAPI):
         adapter_path=ADAPTER_PATH,
         max_new_tokens=MAX_NEW_TOKENS,
         max_input_tokens=MAX_INPUT_TOKENS,
+        adapter_mode=ADAPTER_MODE,
+        time_budget_seconds=TIME_BUDGET_SECONDS,
     )
     # Warm the model before serving production traffic. Local demo users can
     # opt in without making lightweight development/test startup expensive.
@@ -86,6 +92,7 @@ def ready() -> dict:
         "load_error": service.last_load_error if service else None,
         "last_inference_error": inference_error,
         "last_prompt_tokens": service.last_prompt_tokens if service else None,
+        "last_generation_path": getattr(service, "last_generation_path", None) if service else None,
     }
 
 
