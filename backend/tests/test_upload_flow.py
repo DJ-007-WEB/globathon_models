@@ -114,7 +114,7 @@ def test_llm_outage_preserves_successful_ml_result(monkeypatch):
     assert response.status_code == 200
     body = response.json()
     assert body["ml_analysis"] == VALID_ML
-    assert body["model"] == "unavailable"
+    assert body["model"] == "deterministic-fallback"
     assert body["analysis"]["confidence"] == "insufficient_evidence"
 
 
