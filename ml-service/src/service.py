@@ -1656,6 +1656,46 @@ def _capabilities(
     }
 
 
+def _conversion_text(conversion: Mapping[str, Any] | None) -> str | None:
+    if not isinstance(conversion, Mapping):
+        return None
+    source, target = conversion.get("from_unit"), conversion.get("to_unit")
+    if conversion.get("operation") == "identity":
+        return f"{source} (no conversion)"
+    factor, offset = conversion.get("factor", 1.0), conversion.get("offset", 0.0)
+    rule = f"x {factor:g}" + (f" {offset:+g}" if offset else "")
+    return f"{source} -> {target} ({rule})"
+
+
+def _column_mapping(bundle: InputBundle) -> list[dict[str, Any]]:
+    """Expose the auditable mapping manifest for every supplied input table."""
+
+    rows: list[dict[str, Any]] = []
+    for name in ("operating", "weather", "devices", "forecast"):
+        table = getattr(bundle, name, None)
+        mapping = getattr(table, "mapping", None)
+        for item in getattr(mapping, "fields", None) or []:
+            confidence = _as_float(item.get("confidence"))
+            reasons = [str(reason) for reason in item.get("unresolved_reasons") or []]
+            reasons += [str(warning) for warning in item.get("warnings") or []
+                        if warning and "no numeric values available" not in str(warning)]
+            rows.append({
+                "input": name,
+                "source_file": item.get("source_file"),
+                "sheet_name": item.get("sheet_name"),
+                "source_column": str(item.get("source_column")),
+                "canonical_role": item.get("canonical_role"),
+                "device_id": None if item.get("device_id") is None else str(item.get("device_id")),
+                "detected_unit": item.get("detected_unit"),
+                "canonical_unit": item.get("canonical_unit"),
+                "conversion": _conversion_text(item.get("conversion")),
+                "confidence": confidence,
+                "used": bool(item.get("canonical_role")) and not item.get("unresolved"),
+                "reasons": list(dict.fromkeys(reasons)),
+            })
+    return rows
+
+
 def _quality_issue_reason(quality: Mapping[str, Any]) -> str | None:
     status = quality.get("status")
     if status == "pass":
@@ -1663,18 +1703,14 @@ def _quality_issue_reason(quality: Mapping[str, Any]) -> str | None:
     if status == "fail":
         return "Data quality status is fail."
     material: list[str] = []
-    metadata_names = {"scenario id", "synthetic", "site id", "plant id", "source", "event id"}
     for check in quality.get("checks", []) or []:
         if check.get("status") not in {"warning", "fail"}:
             continue
         if check.get("check_id") == "unresolved_schema_mapping":
-            fields = (check.get("details") or {}).get("fields", []) or []
-            sources = [normalize_text(item.get("source_column")) for item in fields]
-            if sources and all(
-                any(name in source for name in metadata_names)
-                for source in sources
-            ):
-                continue
+            # Unmapped extra columns are preserved and reported, but they do not
+            # limit the analysis. Missing required roles are reported separately
+            # through missing_required_fields and already make the result partial.
+            continue
         material.append(str(check.get("check_id") or "unknown_check"))
     if not material:
         return None
@@ -2045,6 +2081,11 @@ def _analyze_bundle(
             "Timestamps are reported on a local basis because the UTC time zone could not be resolved."
         )
 
+    if bundle.unresolved_fields:
+        warnings.append(
+            "Columns not mapped to a supported field were preserved but not used in the analysis: "
+            + ", ".join(dict.fromkeys(str(item) for item in bundle.unresolved_fields)) + "."
+        )
     limitations = list(dict.fromkeys(str(item) for item in warnings if item))
     summary = _summary(
         status=analysis_status,
@@ -2091,6 +2132,7 @@ def _analyze_bundle(
         method="physics_baseline",
         model_status="physics_baseline_active",
         errors=errors,
+        column_mapping=_column_mapping(bundle),
     ).to_dict()
     return json_safe(payload)
 

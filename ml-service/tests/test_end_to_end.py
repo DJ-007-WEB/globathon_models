@@ -152,3 +152,41 @@ def test_stress_dataset_headers_produce_actual_and_expected_energy_without_forec
     assert result["waterfall"]["status"] == "unavailable"
     assert result["waterfall"]["forecast_energy_kwh"] is None
     assert "No forecast file was supplied." in result["waterfall"]["reason"]
+
+
+def test_enriched_auxiliary_columns_are_reported_without_forcing_partial(tmp_path):
+    import pandas as pd
+
+    from src.contract import validate_contract
+    from src.service import analyze
+
+    path = tmp_path / "e2e_operating_enriched.csv"
+    rows = []
+    for hour, power in ((6, 0.0), (7, 40.0), (8, 90.0), (9, 120.0)):
+        rows.append({
+            "timestamp_utc": f"2026-09-01T{hour:02d}:00:00Z",
+            "inverter_id": "INV-01",
+            "ac_power_kw": power,
+            "energy_kwh": power,
+            "poa_irradiance_w_m2": power * 5,
+            "module_temperature_c": 25.0,
+            "rated_ac_power_kw": 250.0,
+            "plant_name": "Demo",
+            "grid_frequency_hz": 50.0,
+            "alarm_code": "",
+        })
+    pd.DataFrame(rows).to_csv(path, index=False)
+
+    result = analyze(path, mode="full")
+    validate_contract(result)
+
+    assert "unresolved_schema_mapping" not in result["summary"]
+    assert set(result["unresolved_fields"]) >= {"plant_name", "grid_frequency_hz", "alarm_code"}
+    assert any("preserved but not used" in item and "grid_frequency_hz" in item for item in result["limitations"])
+    mapping = {item["source_column"]: item for item in result["column_mapping"]}
+    assert mapping["ac_power_kw"]["canonical_role"] == "power_ac"
+    assert mapping["ac_power_kw"]["detected_unit"] == "kW"
+    assert mapping["ac_power_kw"]["used"] is True
+    assert mapping["grid_frequency_hz"]["used"] is False
+    assert result["missing_required_fields"] == []
+    assert result["expected_deviation_kwh"] is not None
