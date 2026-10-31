@@ -187,8 +187,7 @@ class LLMService:
         if isinstance(observations, dict):
             payload["observations"] = {
                 key: observations[key]
-                for key in ("analysis_status", "summary", "interval", "data_quality",
-                            "limitations", "unresolved_fields", "prior_explanation")
+                for key in ("analysis_status", "summary", "interval", "limitations", "unresolved_fields")
                 if key in observations
             }
         ml = payload.get("ml_results")
