@@ -69,6 +69,8 @@ def test_upload_runs_ml_before_llm_and_returns_unchanged_ml(monkeypatch):
     assert events[0][1] == "operating.csv"
     assert events[1][1]["energy"] == VALID_ML["energy"]
     assert events[1][1]["device_performance"] == VALID_ML["device_performance"]
+    assert events[1][1]["energy"] == VALID_ML["energy"]
+    assert events[1][1]["expected_deviation_kwh"] == VALID_ML["expected_deviation_kwh"]
     assert body["ml_analysis"] == VALID_ML
     assert body["analysis"]["summary"].startswith("The ML result")
     assert body["analysis_mode"] == "full"
