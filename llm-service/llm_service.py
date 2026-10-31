@@ -6,6 +6,7 @@ uploaded dataset and is explicitly instructed not to perform plant arithmetic.
 from __future__ import annotations
 
 import json
+import re
 import threading
 from pathlib import Path
 from typing import Any
@@ -162,6 +163,59 @@ class LLMService:
             raise ValueError("Model output must be a JSON object.")
         return value
 
+    @staticmethod
+    def _normalize_response(data: dict[str, Any]) -> dict[str, Any]:
+        """Normalize presentation-only wording without changing ML evidence or numbers."""
+        labels = {
+            "plant_id": "plant identifier",
+            "ml_results": "deterministic ML findings",
+            "analysis_status": "analysis status",
+            "data_quality": "data quality",
+            "actual_energy": "measured energy",
+            "expected_energy": "expected energy",
+            "forecast_energy": "forecast energy",
+            "expected_deviation_kwh": "expected energy deviation",
+            "deviation": "energy deviation",
+            "value_kwh": "energy value",
+            "device_id": "device identifier",
+            "request_id": "analysis reference",
+        }
+        normalized = dict(data)
+        for field in ("summary", "observations", "possible_causes", "supporting_evidence",
+                      "recommended_checks", "limitations"):
+            value = normalized.get(field)
+            values = [value] if isinstance(value, str) else value
+            if not isinstance(values, list):
+                continue
+            cleaned = []
+            for item in values:
+                if not isinstance(item, str):
+                    continue
+                text = item.strip()
+                if not text or text.lower() in labels:
+                    continue
+                for raw, readable in labels.items():
+                    text = re.sub(r"(?<![A-Za-z0-9_])" + re.escape(raw) + r"(?![A-Za-z0-9_])",
+                                  readable, text, flags=re.IGNORECASE)
+                cleaned.append(text)
+            normalized[field] = cleaned if field != "summary" else (cleaned[0] if cleaned else "")
+        confidence = str(normalized.get("confidence", "insufficient_evidence")).strip().lower().replace(" ", "_")
+        confidence_aliases = {
+            "medium": "moderate",
+            "moderately": "moderate",
+            "very_high": "high",
+            "strong": "high",
+            "weak": "low",
+            "unknown": "insufficient_evidence",
+            "none": "insufficient_evidence",
+            "not_enough_evidence": "insufficient_evidence",
+        }
+        confidence = confidence_aliases.get(confidence, confidence)
+        normalized["confidence"] = confidence if confidence in {
+            "low", "moderate", "high", "insufficient_evidence"
+        } else "insufficient_evidence"
+        return normalized
+
     def analyze(self, request: AnalysisRequest) -> AnalysisResponse:
         self._load()
         user_payload = self._build_user_payload(request)
@@ -191,7 +245,7 @@ class LLMService:
             output_tokens = generated[0][inputs["input_ids"].shape[1]:]
             output_text = self.tokenizer.decode(output_tokens, skip_special_tokens=True)
 
-        data = self._extract_json(output_text)
+        data = self._normalize_response(self._extract_json(output_text))
         try:
             return AnalysisResponse.model_validate(data)
         except Exception as exc:
