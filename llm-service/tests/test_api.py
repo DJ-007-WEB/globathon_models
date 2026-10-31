@@ -154,3 +154,39 @@ def test_model_output_schema_rejects_extra_fields():
         pass
     else:
         raise AssertionError("Extra generated output fields must be rejected.")
+
+def test_schema_repair_fills_missing_fields_without_inventing_evidence():
+    from llm_service import LLMService
+    from schemas import AnalysisRequest
+
+    request = AnalysisRequest(
+        plant_id="plant-1",
+        observations={"analysis_status": "partial", "summary": "Expected energy is unavailable."},
+        ml_results={"actual_energy": 123.45},
+    )
+    repaired = LLMService._coerce_response(
+        {"observations": "Measured energy is 123.45 kWh.", "confidence": "medium"},
+        request,
+    )
+    validated = AnalysisResponse.model_validate(repaired)
+    assert "partial" in validated.summary
+    assert validated.observations == ["Measured energy is 123.45 kWh."]
+    assert validated.possible_causes == []
+    assert validated.confidence == "moderate"
+
+
+def test_schema_repair_discards_unknown_model_fields():
+    from llm_service import LLMService
+    from schemas import AnalysisRequest
+
+    request = AnalysisRequest(
+        plant_id="plant-1",
+        observations={"summary": "The analysis is partial."},
+    )
+    repaired = LLMService._coerce_response(
+        {"summary": "Grounded summary.", "extra_metric": 999},
+        request,
+    )
+    assert "extra_metric" not in repaired
+    assert repaired["observations"] == []
+    assert repaired["limitations"] == []
