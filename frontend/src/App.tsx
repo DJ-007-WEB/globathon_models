@@ -184,6 +184,7 @@ function ValidationLab({result,datasetName}:{result:ApiResult;datasetName:string
 
 function AnalysisResponse({result}:{result:ApiResult}) {
   const a=result.analysis;
+  const mlStatus = result.ml_analysis?.analysis_status;
   const sections:Array<[string,string[]|undefined,string]>=[
     ["What the readings tell us",a.observations,"No observations were returned."],
     ["Possible explanations",a.possible_causes,"No supported causes were identified."],
@@ -191,7 +192,7 @@ function AnalysisResponse({result}:{result:ApiResult}) {
     ["Recommended checks",a.recommended_checks,"No checks were returned."],
     ["Limitations and uncertainty",a.limitations,"No limitations were reported."]
   ];
-  return <div className="assistant-response"><div className="assistant-answer-heading"><span className="assistant-mark">✳</span><div><strong>SolarSleuth analysis</strong><small>Evidence-grounded explanation · {pretty(a.confidence||"insufficient_evidence")} confidence</small></div></div><p className="analysis-summary">{a.summary||"The model did not return a summary."}</p><div className="answer-sections">{sections.map(([title,items,fallback],i)=><section className="answer-section" key={title}><h3><span>{["◉","⌁","↗","✓","ⓘ"][i]}</span>{title}</h3><ul>{listOrFallback(items,fallback).map((x,j)=><li key={j}>{displayValue(x)}</li>)}</ul></section>)}</div><p className="inline-note">AI-generated explanation · Verify hypotheses with plant telemetry and qualified operators.</p></div>;
+  return <div className="assistant-response"><div className="assistant-answer-heading"><span className="assistant-mark">✳</span><div><strong>SolarSleuth analysis</strong><small>Evidence-grounded explanation · {pretty(a.confidence||"insufficient_evidence")} confidence</small></div></div>{mlStatus&&<div className="analysis-state-row"><span className={"status-chip "+(mlStatus==="partial"?"status-warn":mlStatus==="success"?"":"status-fail")}>ML analysis: {pretty(String(mlStatus))}</span>{result.model==="unavailable"&&<span className="ai-unavailable-note" role="status">AI explanation unavailable · deterministic ML findings are still available below</span>}</div>}<p className="analysis-summary">{a.summary||"The model did not return a summary."}</p><div className="answer-sections">{sections.map(([title,items,fallback],i)=><section className="answer-section" key={title}><h3><span>{["◉","⌁","↗","✓","ⓘ"][i]}</span>{title}</h3><ul>{listOrFallback(items,fallback).map((x,j)=><li key={j}>{displayValue(x)}</li>)}</ul></section>)}</div><p className="inline-note">AI-generated explanation · Verify hypotheses with plant telemetry and qualified operators.</p></div>;
 }
 
 function OverviewDashboard({history,plants,selectedPlantId,onPlantChange,onNavigate}:{history:Turn[];plants:Plant[];selectedPlantId:string;onPlantChange:(id:string)=>void;onNavigate:(page:"data"|"report"|"validation"|"assistant")=>void}) {
