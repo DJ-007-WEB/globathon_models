@@ -57,6 +57,8 @@ mapping:
     - energy_cumulative
     - irradiance_poa
     - irradiance_ghi
+    - irradiance_dni
+    - irradiance_dhi
     - ambient_temperature
     - module_temperature
     - capacity
