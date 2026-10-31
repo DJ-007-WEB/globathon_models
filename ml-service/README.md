@@ -58,3 +58,8 @@ python -m pytest -q
 ```
 
 The suite covers the pipeline, API boundary, contract, schema mapping, validation and energy calculations. Synthetic benchmarks are not real-world accuracy claims.
+
+
+## Per-device energy output (contract v2.1.0)
+
+When the operating dataset contains a resolved device/inverter identifier, the analysis response includes a `device_performance` array. Each item reports the device identifier, row count, valid measured/expected row counts, measured energy (kWh), physics-baseline expected energy (kWh), and measured-minus-expected difference (kWh). Values are aggregated from the same validated operating rows as the plant totals; unavailable values remain `null`. The frontend uses this section to show an inverter comparison on the overview dashboard and the saved report. The difference is produced by deterministic ML, not recomputed by the browser.
