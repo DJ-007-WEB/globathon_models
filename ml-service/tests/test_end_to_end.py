@@ -151,3 +151,4 @@ def test_stress_dataset_headers_produce_actual_and_expected_energy_without_forec
     assert result["energy"]["actual"]["status"] == "available"
     assert result["waterfall"]["status"] == "unavailable"
     assert result["waterfall"]["forecast_energy_kwh"] is None
+    assert "No forecast file was supplied." in result["waterfall"]["reason"]
