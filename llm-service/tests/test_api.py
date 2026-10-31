@@ -32,6 +32,27 @@ def test_health_and_lazy_readiness():
         assert ready.json()["status"] == "not_loaded"
 
 
+def test_warmup_loads_model_and_updates_readiness(monkeypatch):
+    with TestClient(app) as client:
+        service = app.state.llm_service
+
+        def fake_load():
+            service.tokenizer = object()
+            service.model = object()
+            service.resolved_model_name = "test-model"
+            service.last_load_error = None
+
+        monkeypatch.setattr(service, "_load", fake_load)
+        response = client.post("/warmup")
+        assert response.status_code == 200, response.text
+        assert response.json()["model_loaded"] is True
+
+        ready = client.get("/ready").json()
+        assert ready["status"] == "ready"
+        assert ready["model_loaded"] is True
+        assert ready["last_inference_error"] is None
+
+
 def test_analyze_returns_backend_contract(monkeypatch):
     expected = AnalysisResponse(
         summary="The supplied ML result reports partial underperformance; verify the evidence.",
