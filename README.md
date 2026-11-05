@@ -1,6 +1,8 @@
 # SolarSleuth
 
-SolarSleuth analyses solar-plant operating data using a deterministic ML pipeline and produces evidence-grounded explanations with a locally hosted LLM.
+SolarSleuth analyses solar-plant operating data through a deterministic ML pipeline, combining adaptive data ingestion, physics-based energy estimation, performance analysis and anomaly detection. A locally hosted LLM converts the resulting structured analytical outputs into evidence-grounded, readable explanations.
+
+The platform aims to help solar plant operators understand generation deviations, identify potential performance issues and make informed operational decisions.
 
 ## Repository layout
 
@@ -21,6 +23,35 @@ SolarSleuth analyses solar-plant operating data using a deterministic ML pipelin
 The browser talks **only** to the backend. The backend validates uploads, invokes deterministic ML first, and then passes bounded ML evidence to the LLM. ML is the sole numerical authority; the LLM explains and must not calculate or modify energy metrics. If the LLM is unavailable after a valid ML result, the backend preserves the ML result and returns an explicit explanation-unavailable response.
 
 The upload contract accepts one required operating-data CSV/XLSX file plus optional weather, forecast, device and event-log CSV/XLSX files (25 MiB combined). The ML response contract is version 2.1.0 and includes per-inverter measured energy, physics-based expected energy and their difference when device identifiers are available; the per-device measured and expected totals reconcile to the corresponding plant totals. Each analysis must contain at most one non-empty `scenario_id`; mixed scenario IDs are rejected with an actionable validation error rather than silently combined into misleading plant totals. Upload each simulation scenario separately. The raw upload is not persisted. Auth, plants, saved analysis reports and report-grounded follow-up conversations are MongoDB-backed and scoped to the authenticated business workspace. The trained LoRA adapter and model weights are intentionally not committed.
+
+## ML and Analytical Pipeline
+
+The ML service forms the analytical core of SolarSleuth. It processes solar-plant operating data and produces structured, evidence-based results.
+
+Its key capabilities include:
+
+- **Adaptive Data Ingestion:** Maps varying CSV/XLSX structures, column names, units, timestamps and sampling intervals into a standardized schema.
+- **Data Validation:** Identifies missing readings, duplicate records, data gaps, physically implausible values, meter resets and flatlined measurements.
+- **Physics-Based Baseline:** Estimates expected energy generation using available plant specifications and environmental measurements.
+- **Performance Analysis:** Evaluates deviations between measured and expected generation.
+- **Anomaly Detection:** Identifies unusual inverter behaviour, persistent deviations and changes in generation patterns.
+- **Inverter Peer Comparison:** Compares inverter-level performance to highlight potential underperformance.
+- **Loss Attribution:** Analyses weather-related, plant-related, externally constrained and unresolved deviations using available operational evidence.
+
+The ML service returns structured metrics, anomalies, potential explanations, data-quality findings and analytical limitations. These outputs form the basis for the LLM explanation layer.
+
+## LLM Explanation Layer
+
+SolarSleuth uses a locally hosted Qwen model with a trained LoRA adapter to convert structured ML outputs into readable, context-aware explanations.
+
+The LLM:
+
+- Explains identified generation deviations and anomalies.
+- Summarizes the evidence behind potential contributing factors.
+- Communicates uncertainty and analytical limitations.
+- Supports report-grounded follow-up conversations.
+
+The LLM does not independently calculate energy metrics or modify the numerical results produced by the ML service. This separation preserves the reliability of deterministic analysis while making its findings easier to understand.
 
 ## Requirements
 
@@ -214,6 +245,16 @@ With a service running, open:
 - Backend: http://127.0.0.1:8001/docs
 - ML: OpenAPI docs are disabled on this private service; use `/health` and `/ready` for smoke checks.
 - LLM: http://127.0.0.1:8000/docs
+
+## Future Scope
+
+SolarSleuth aims to evolve into a broader Energy Intelligence Platform, with future development focused on:
+
+- **Advanced Solar Intelligence:** Improved performance modelling, degradation tracking, soiling and cleaning analysis, weather-adjusted forecasting and refined loss attribution.
+- **Operational Intelligence:** Better identification of performance inefficiencies and evidence-backed maintenance and operational recommendations.
+- **BusinessOps Intelligence:** Connecting technical energy losses with potential revenue impact, PPA and O&M contract analysis, warranty and insurance evidence, and relevant regulatory schemes and incentives.
+
+The long-term objective is to connect technical asset performance with operational and business decision-making through a unified, evidence-driven platform.
 
 ## CI and branch layout
 
