@@ -1,10 +1,10 @@
-name: SolarSleuth product integration CI
+name: SolarSleuth integration CI
 
 on:
   push:
-    branches: [product-transformation, ui/solar-analyst-experience]
+    branches: [main]
   pull_request:
-    branches: [product-transformation]
+    branches: [main]
 
 permissions:
   contents: read
