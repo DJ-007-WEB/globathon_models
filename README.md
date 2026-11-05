@@ -69,7 +69,7 @@ Open four terminals from the repository root.
 ```powershell
 cd ml-service
 py -3.11 -m venv .venv
-.\.venv\Scripts\Activate.ps1
+.\\.venv\\Scripts\\Activate.ps1
 python -m pip install --upgrade pip
 pip install -r requirements.txt
 python -m uvicorn api:app --host 127.0.0.1 --port 8002 --reload
@@ -80,7 +80,7 @@ python -m uvicorn api:app --host 127.0.0.1 --port 8002 --reload
 ```powershell
 cd llm-service
 py -3.11 -m venv .venv
-.\.venv\Scripts\Activate.ps1
+.\\.venv\\Scripts\\Activate.ps1
 python -m pip install --upgrade pip
 # Install the PyTorch build appropriate for your machine first.
 pip install -r requirements-api.txt
@@ -94,7 +94,7 @@ The lightweight API tests do not need model weights. For live inference, the com
 ```powershell
 cd backend
 py -3.11 -m venv .venv
-.\.venv\Scripts\Activate.ps1
+.\\.venv\\Scripts\\Activate.ps1
 python -m pip install --upgrade pip
 pip install -r requirements.txt
 python -m uvicorn main:app --host 127.0.0.1 --port 8001 --reload
@@ -137,7 +137,7 @@ python -m pytest -q
 For an aggregate run, first create and install the service environments as described above, then run from the repository root:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\test-all.ps1
+powershell -ExecutionPolicy Bypass -File .\\scripts\\test-all.ps1
 ```
 
 The script uses each service's `.venv` when present and returns a non-zero exit code if any suite fails.
@@ -162,7 +162,7 @@ A process health response is not proof the model is loaded. For live LLM inferen
 After starting the four services on ports 8000, 8001, 8002 and 5173, run:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\verify-local-runtime.ps1
+powershell -ExecutionPolicy Bypass -File .\\scripts\\verify-local-runtime.ps1
 ```
 
 The script checks the listening process/interpreter for each port, the 300-second backend LLM timeout, matching non-empty internal service tokens (without printing them), both trusted CORS origins, LLM warmup, backend dependency readiness and the Vite HTTP response. It exits non-zero if any check fails. It does not change local environment files or expose secret values.
@@ -215,8 +215,16 @@ With a service running, open:
 - ML: OpenAPI docs are disabled on this private service; use `/health` and `/ready` for smoke checks.
 - LLM: http://127.0.0.1:8000/docs
 
-## CI and branch safety
+## CI and branch layout
 
-GitHub Actions runs frontend build, backend tests, LLM API tests and deterministic ML tests on `product-transformation`. A green CI run does not prove MongoDB connectivity, local GPU inference, model accuracy or a complete live end-to-end run.
+The default branch is `main`. GitHub Actions runs the frontend build, backend tests, LLM API tests and deterministic ML tests on pushes to `main` and pull requests targeting `main`. The workflow validates the service test suites; a green CI run does not prove MongoDB connectivity, local GPU inference, model accuracy or a complete live end-to-end run.
 
-All work is isolated on `product-transformation`. The original `frontend`, `backend`, `AI-model`, `ML_models` and `main` branches are not changed by this restructuring. Do not merge until the branch has been reviewed and the live acceptance flow has been tested.
+The maintained branches are:
+
+- `main` — integrated application and current project documentation.
+- `frontend` — frontend work.
+- `backend` — backend work.
+- `ML_models` — machine-learning work.
+- `AI-model` — local LLM work.
+
+The retired integration/UI branches are no longer part of the active workflow. Use pull requests into `main` for future integration, and run the documented live acceptance flow before deploying. The four service directories remain `frontend/`, `backend/`, `ml-service/` and `llm-service/`; branch names do not represent service directory names.
